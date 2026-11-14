@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f5d9e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Задания">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Задания</title>
+<style>
+:root{--bg:#f6f5f1;--surface:#fff;--surface-2:#f0eee8;--text:#1d1c1a;--muted:#5f5c55;--line:#dcd9d0;--accent:#2f5d9e;--accent-soft:#e3ebf7;--ok:#2d7a4f;--ok-soft:#e1f2e8;--bad:#b3362d;--bad-soft:#f8e4e1}
+@media (prefers-color-scheme:dark){:root{--bg:#16171a;--surface:#1f2125;--surface-2:#272a2f;--text:#ecebe7;--muted:#a4a19a;--line:#34373d;--accent:#8db4ee;--accent-soft:#25324a;--ok:#6cc58f;--ok-soft:#1e3328;--bad:#f0877d;--bad-soft:#3a2321}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:18px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.wrap{max-width:760px;margin:0 auto;padding:16px 16px 48px}
+header.bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;margin-bottom:16px}
+h1{margin:0;font-size:24px}
+h2{margin:0 0 6px;font-size:20px}
+.status{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:15px;color:var(--muted)}
+.pill{padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2)}
+.pill.warn{border-color:var(--bad);color:var(--bad)}
+.pill.ok{border-color:var(--ok);color:var(--ok)}
+button,.btn{font:inherit;font-weight:600;min-height:48px;padding:10px 18px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--text);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+button:disabled{opacity:.5}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin:0 0 12px}
+.muted{color:var(--muted);font-size:15px}
+.bar-p{height:10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;margin:10px 0}
+.bar-p>i{display:block;height:100%;background:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.q{font-size:22px;margin:8px 0 16px;overflow-wrap:anywhere}
+.opts{display:grid;gap:10px}
+.opts button{text-align:left;min-height:56px;font-weight:500}
+.opts button.sel{border-color:var(--accent);background:var(--accent-soft)}
+.opts button.right{border-color:var(--ok);background:var(--ok-soft)}
+.opts button.wrong{border-color:var(--bad);background:var(--bad-soft)}
+input[type=text]{width:100%;font:inherit;font-size:22px;padding:12px 14px;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--text)}
+.fb{margin-top:16px;padding:14px;border-radius:12px;border:1px solid var(--line)}
+.fb.ok{background:var(--ok-soft);border-color:var(--ok)}
+.fb.bad{background:var(--bad-soft);border-color:var(--bad)}
+.fb b{display:block;margin-bottom:4px}
+.notice{margin:0 0 12px;padding:12px 14px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--accent);font-size:16px}
+.err{color:var(--bad)}
+@media (prefers-reduced-motion:no-preference){button{transition:background .15s,border-color .15s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <h1 id="title">Задания</h1>
+    <div class="status" id="status" aria-live="polite"></div>
+  </header>
+  <main id="view"></main>
+</div>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
