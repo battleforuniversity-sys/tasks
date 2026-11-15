@@ -1,6 +1,6 @@
 /* Service Worker: хранит оболочку приложения, чтобы оно открывалось без сети. Данные заданий — в IndexedDB. */
-var CACHE = 'tasks-shell-v1';
-var SHELL = ['./', 'index.html', 'app.js', 'logic.js', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+var CACHE = 'tasks-shell-v3';
+var SHELL = ['./', 'index.html', 'app.js', 'logic.js', 'plan.js', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', function (event) {
   event.waitUntil(caches.open(CACHE).then(function (cache) { return cache.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));

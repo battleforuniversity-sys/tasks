@@ -1,12 +1,12 @@
 /* app.js — приложение-ученик: задания по темам офлайн, очередь ответов, синхронизация с Apps Script. */
 (function () {
   'use strict';
-  var L = window.Logic;
+  var L = window.Logic, P = window.Plan;
   var view = document.getElementById('view');
   var statusEl = document.getElementById('status');
   var titleEl = document.getElementById('title');
 
-  var state = { config: null, pack: null, done: {}, queued: 0, lastSync: '', syncing: false, syncError: '', session: null };
+  var state = { config: null, pack: null, done: {}, queued: 0, lastSync: '', syncing: false, syncError: '', session: null, tab: 'home', weekIdx: null };
 
   // ------------------------------------------------------------------ хранилище (IndexedDB)
   var dbPromise = new Promise(function (resolve, reject) {
@@ -42,6 +42,10 @@
   // ------------------------------------------------------------------ утилиты
   function esc(v) {
     return String(v === null || v === undefined ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  // Текст задания: «\n» — перенос строки, «__слово__» — подчёркнутое слово (в вопросах «altı çizili sözcük»).
+  function rich(v) {
+    return esc(v).replace(/\\n/g, '<br>').replace(/__(.+?)__/g, '<u>$1</u>');
   }
   function plural(n, a, b, c) {
     var x = Math.abs(n) % 100, y = x % 10;
@@ -160,7 +164,7 @@
       return refreshCounters();
     }).then(function () {
       renderStatus();
-      if (!state.session) renderHome();
+      if (!state.session) route(state.tab);
     });
   }
 
@@ -169,9 +173,235 @@
     return (state.pack ? state.pack.topics : []).filter(function (t) { return t.id === id; })[0];
   }
 
-  function renderHome() {
+  // ------------------------------------------------------------------ данные для экранов
+  function pct(a, b) { return b > 0 ? Math.round(a * 100 / b) : 0; }
+  function today() { return P.todayInIstanbul(); }
+
+  /** {taskId: задание + topicId} из скачанного пакета. */
+  function taskPool() {
+    var pool = {};
+    (state.pack ? state.pack.topics : []).forEach(function (t) {
+      t.tasks.forEach(function (task) { pool[task.id] = Object.assign({ topicId: t.id }, task); });
+    });
+    return pool;
+  }
+
+  /** {taskId: верно?} — ответы с сервера, поверх них то, что решено на этом устройстве (оно свежее). */
+  function liveAnswered() {
+    var map = {};
+    var fromServer = (state.pack && state.pack.answered) || {};
+    Object.keys(fromServer).forEach(function (id) { map[id] = fromServer[id]; });
+    Object.keys(state.done).forEach(function (id) { map[id] = state.done[id].correct; });
+    return map;
+  }
+
+  function liveStats() {
+    var tasks = [], topicSubject = {};
+    (state.pack ? state.pack.topics : []).forEach(function (t) {
+      if (t.subjectId) topicSubject[t.id] = t.subjectId;
+      t.tasks.forEach(function (x) { tasks.push({ id: x.id, topicId: t.id }); });
+    });
+    return P.planStats({ today: today(), tasks: tasks, topicSubject: topicSubject,
+      plan: (state.pack && state.pack.plan) || [], answered: liveAnswered() });
+  }
+
+  function examCountdown(exam) {
+    if (!exam || !exam.date) return null;
+    var a = today().split('-').map(Number), b = String(exam.date).split('-').map(Number);
+    var days = Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86400000);
+    if (days < 0) return { headline: 'Экзамен прошёл', sub: '' };
+    if (days === 0) return { headline: 'Сегодня', sub: 'Первый день экзамена' };
+    var w = Math.floor(days / 7), r = days % 7, parts = [];
+    if (w) parts.push(w + ' ' + plural(w, 'неделя', 'недели', 'недель'));
+    if (r) parts.push(r + ' ' + plural(r, 'день', 'дня', 'дней'));
+    return { headline: parts.join(' '), sub: 'Всего ' + days + ' ' + plural(days, 'день', 'дня', 'дней') };
+  }
+
+  function duration(min) {
+    var h = Math.floor(min / 60), m = min % 60;
+    return (h ? h + ' ч' : '') + (h && m ? ' ' : '') + (m || !h ? m + ' мин' : '');
+  }
+
+  function tbar(green, red, label) {
+    return '<div class="tbar" role="img" aria-label="' + esc(label) + '"><i class="g" style="width:' + green + '%"></i><i class="r" style="width:' + red + '%"></i></div>';
+  }
+
+  // ------------------------------------------------------------------ навигация
+  var TABS = [['home', 'Дашборд'], ['today', 'Сегодня'], ['debt', 'Нужно выполнить'], ['schedule', 'Расписание'], ['practice', 'Тренировка']];
+
+  function renderNav() {
+    document.getElementById('nav').style.display = '';
+    var st = state.pack && state.pack.plan ? liveStats() : null;
+    document.getElementById('nav').innerHTML = TABS.map(function (t) {
+      var n = '';
+      if (st && t[0] === 'today' && st.all.today) n = '<span class="n">' + st.all.todayDone + '/' + st.all.today + '</span>';
+      if (st && t[0] === 'debt' && st.all.debt) n = '<span class="n red">' + st.all.debt + '</span>';
+      return '<button data-tab="' + t[0] + '"' + (state.tab === t[0] ? ' aria-current="page"' : '') + '>' + t[1] + n + '</button>';
+    }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('#nav [data-tab]'), function (b) {
+      b.onclick = function () { route(b.getAttribute('data-tab')); };
+    });
+  }
+
+  function route(tab) {
     state.session = null;
-    titleEl.textContent = 'Задания';
+    state.tab = tab;
+    renderNav();
+    if (tab === 'today') return renderAssigned('today');
+    if (tab === 'debt') return renderAssigned('debt');
+    if (tab === 'schedule') return renderSchedule();
+    if (tab === 'practice') return renderPractice();
+    return renderDashboard();
+  }
+
+  // ------------------------------------------------------------------ дашборд
+  function renderDashboard() {
+    titleEl.textContent = 'Дашборд';
+    var home = state.pack && state.pack.home;
+    var st = state.pack && state.pack.plan ? liveStats() : null;
+
+    if (!state.pack) {
+      view.innerHTML = '<div class="card"><h2>Данных пока нет</h2><p class="muted">' +
+        (navigator.onLine ? 'Нажмите «Синхронизировать» — приложение скачает задания и расписание.' : 'Подключитесь к интернету и нажмите «Синхронизировать».') + '</p></div>';
+      return;
+    }
+
+    var html = '';
+    if (st) {
+      html += '<div class="links">' +
+        '<button data-go="schedule">🗓 Расписание</button>' +
+        '<button data-go="today" class="primary">📱 Задания на сегодня<br><small>' + st.all.todayDone + ' из ' + st.all.today + '</small></button>' +
+        '<button data-go="debt"' + (st.all.debt ? ' class="red"' : '') + '>⏳ Нужно выполнить<br><small>' +
+        (st.all.debt ? st.all.debt + ' ' + plural(st.all.debt, 'задание', 'задания', 'заданий') : 'долга нет') + '</small></button></div>';
+    } else {
+      html += '<div class="links"><button data-go="schedule">🗓 Расписание</button><button data-go="practice">📱 Тренировка</button></div>';
+    }
+
+    if (home) {
+      var ex = examCountdown(home.exam);
+      var tk = st ? st.all : home.tasks;
+      var accuracy = pct(tk.correct, tk.answered);
+      html += '<div class="grid">';
+      if (ex) html += '<section class="card"><h2>' + esc(home.exam.name || 'Экзамен') + '</h2><div class="big">' + esc(ex.headline) + '</div><div class="muted">' + esc(ex.sub) + '</div></section>';
+      html += '<section class="card"><h2>Темы</h2><div class="big"><span class="good">' + home.topics.done + '</span> <small>из ' + home.topics.total + '</small></div>' +
+        tbar(home.topics.percent, 0, 'Пройдено тем') + '</section>';
+      html += '<section class="card"><h2>Задания</h2><div class="big"><span class="good">' + tk.answered + '</span> <small>из ' + tk.total + '</small></div>' +
+        tbar(pct(tk.answered, tk.total), pct(tk.debt, tk.total), 'Решено заданий и долг') +
+        '<div class="muted">Верно ' + accuracy + '% · ' + (tk.debt ? '<span class="debt">долг ' + tk.debt + '</span>' : 'долга нет') + '</div></section>';
+      html += '</div>';
+
+      home.subjects.forEach(function (s) {
+        var sub = st && st.bySubject[s.id] ? st.bySubject[s.id] : s.tasks;
+        html += '<section class="card"><h2>' + esc(s.name) + '</h2>' +
+          '<div class="muted">' + (s.current ? 'Тема: ' + esc(s.current.name) : s.state === 'empty' ? 'Программа не загружена' : s.state === 'finished' ? 'Программа пройдена' : 'Тема не назначена') + '</div>';
+        if (s.state !== 'empty') html += tbar(s.percent, 0, 'Пройдено тем: ' + s.name) + '<div class="muted">Темы: ' + s.done + ' из ' + s.total + '</div>';
+        if (s.tasks.mode === 'app') {
+          html += '<div class="muted" style="margin-top:8px">📱 Задания в приложении</div>';
+          if (sub.total) html += tbar(pct(sub.answered, sub.total), pct(sub.debt, sub.total), 'Задания: решено и долг: ' + s.name) +
+            '<div class="muted">Решено ' + sub.answered + ' из ' + sub.total + ' · верно ' + pct(sub.correct, sub.answered) + '%' +
+            (sub.debt ? ' · <span class="debt">долг ' + sub.debt + '</span>' : '') + '</div>';
+        } else if (s.tasks.mode === 'book') {
+          html += '<div class="muted" style="margin-top:8px">📖 Задания в книжке</div>';
+        }
+        html += '</section>';
+      });
+    } else {
+      html += '<div class="card"><p class="muted">Прогресс по темам появится после следующей синхронизации.</p></div>';
+    }
+
+    if (state.pack.generatedAt) html += '<p class="muted">Данные от ' + esc(clock(state.pack.generatedAt)) + '. Задания и долг считаются на этом устройстве сразу.</p>';
+    view.innerHTML = html;
+    Array.prototype.forEach.call(view.querySelectorAll('[data-go]'), function (b) { b.onclick = function () { route(b.getAttribute('data-go')); }; });
+  }
+
+  // ------------------------------------------------------------------ задания на сегодня / нужно выполнить
+  function renderAssigned(kind) {
+    titleEl.textContent = kind === 'today' ? 'Задания на сегодня' : 'Нужно выполнить';
+    if (!state.pack || !state.pack.plan) {
+      view.innerHTML = '<div class="card"><h2>Заданий по расписанию пока нет</h2><p class="muted">Нажмите «Синхронизировать» при подключении к интернету. Задания по темам можно решать на вкладке «Тренировка».</p></div>';
+      return;
+    }
+    var st = liveStats(), pool = taskPool(), ans = liveAnswered();
+    var ids = kind === 'today' ? st.todayList : st.debtList;
+
+    if (!ids.length) {
+      view.innerHTML = '<div class="card"><h2>' + (kind === 'today' ? 'На сегодня заданий нет' : 'Долга нет 🎉') + '</h2><p class="muted">' +
+        (kind === 'today' ? 'Задания приходят по расписанию. Можно потренироваться на вкладке «Тренировка».' : 'Все выданные задания выполнены.') + '</p></div>';
+      return;
+    }
+
+    var groups = [], byTopic = {};
+    ids.forEach(function (id) {
+      var t = pool[id]; if (!t) return;
+      if (!byTopic[t.topicId]) { byTopic[t.topicId] = { topicId: t.topicId, ids: [], left: [] }; groups.push(byTopic[t.topicId]); }
+      byTopic[t.topicId].ids.push(id);
+      if (ans[id] === undefined) byTopic[t.topicId].left.push(id);
+    });
+
+    var summary = kind === 'today'
+      ? '<div class="card"><div class="big"><span class="good">' + st.all.todayDone + '</span> <small>из ' + st.all.today + ' сделано</small></div>' + tbar(pct(st.all.todayDone, st.all.today), 0, 'Сделано сегодня') + '</div>'
+      : '<div class="card"><div class="big debt">' + st.all.debt + ' <small>' + plural(st.all.debt, 'задание', 'задания', 'заданий') + ' ждёт</small></div><p class="muted">Это задания прошлых дней. Они переносятся сюда, пока не будут решены.</p></div>';
+
+    view.innerHTML = summary + groups.map(function (g, i) {
+      var topic = topicById(g.topicId), done = g.ids.length - g.left.length;
+      return '<section class="card"><h2>' + esc(topic ? topic.name : g.topicId) + '</h2>' +
+        (topic && topic.subject ? '<div class="muted">' + esc(topic.subject) + '</div>' : '') +
+        (kind === 'today' ? tbar(pct(done, g.ids.length), 0, 'Сделано') + '<div class="muted">Сделано ' + done + ' из ' + g.ids.length + '</div>' : '<div class="muted">Осталось ' + g.left.length + '</div>') +
+        '<div class="row">' + (g.left.length
+          ? '<button class="primary" data-g="' + i + '">' + (done ? 'Продолжить' : 'Начать') + ' (' + g.left.length + ')</button>'
+          : '<span class="good">✓ Всё выполнено</span>') + '</div></section>';
+    }).join('') + (groups.length > 1 ? '<div class="row"><button data-g="all">Решать всё подряд (' + ids.filter(function (id) { return ans[id] === undefined; }).length + ')</button></div>' : '');
+
+    Array.prototype.forEach.call(view.querySelectorAll('[data-g]'), function (b) {
+      b.onclick = function () {
+        var k = b.getAttribute('data-g');
+        startAssigned(k === 'all' ? ids : groups[Number(k)].left, kind);
+      };
+    });
+  }
+
+  // ------------------------------------------------------------------ расписание
+  function renderSchedule() {
+    titleEl.textContent = 'Расписание';
+    var weeks = (state.pack && state.pack.weeks) || [];
+    if (!weeks.length) {
+      view.innerHTML = '<div class="card"><h2>Расписания пока нет</h2><p class="muted">Нажмите «Синхронизировать» при подключении к интернету.</p></div>';
+      return;
+    }
+    var now = today();
+    if (state.weekIdx === null || state.weekIdx >= weeks.length) {
+      state.weekIdx = 0;
+      weeks.forEach(function (w, i) { if (w.days.some(function (d) { return d.date === now; })) state.weekIdx = i; });
+    }
+    var w = weeks[state.weekIdx];
+
+    var html = '<div class="weeknav"><button id="wp"' + (state.weekIdx === 0 ? ' disabled' : '') + '>‹</button>' +
+      '<div class="range">' + esc(w.range) + '</div><button id="wn"' + (state.weekIdx >= weeks.length - 1 ? ' disabled' : '') + '>›</button></div>';
+
+    w.days.forEach(function (d) {
+      var isToday = d.date === now;
+      html += '<section class="day' + (isToday ? ' today' : '') + '"><h3>' + esc(d.short) + ' ' + esc(d.dayMonth) + (isToday ? ' · сегодня' : '') +
+        (d.totalMinutes ? ' <span class="muted">' + esc(duration(d.totalMinutes)) + '</span>' : '') + '</h3>';
+      if (!d.items.length) html += '<p class="muted">Занятий нет</p>';
+      d.items.forEach(function (it) {
+        var loc = it.kind === 'school' ? '🏫 Школа' : it.kind === 'home' ? '🏠 Дома' : it.location;
+        html += '<div class="item ' + esc(it.kind) + '"><div class="t">' + esc(it.start + (it.end ? '–' + it.end : '')) + ' · ' + esc(it.label) + '</div>' +
+          '<div class="m">' + esc([loc, it.duration ? duration(it.duration) : ''].filter(Boolean).join(' · ')) + '</div>' +
+          (it.activity ? '<div class="m">' + esc(it.activity) + '</div>' : '') +
+          (it.topic ? '<div class="m">📖 ' + esc(it.topic.name) + '</div>' : '') +
+          (it.tasksMode === 'app' ? '<div class="m">📱 Задания в приложении</div>' : it.tasksMode === 'book' ? '<div class="m">📖 Задания в книжке</div>' : '') +
+          '</div>';
+      });
+      html += '</section>';
+    });
+    view.innerHTML = html;
+    document.getElementById('wp').onclick = function () { state.weekIdx--; renderSchedule(); };
+    document.getElementById('wn').onclick = function () { state.weekIdx++; renderSchedule(); };
+  }
+
+  function renderPractice() {
+    state.session = null;
+    titleEl.textContent = 'Тренировка';
     var topics = state.pack ? state.pack.topics : [];
 
     if (!topics.length) {
@@ -202,29 +432,38 @@
 
   function startPractice(topicId, mode) {
     var topic = topicById(topicId);
-    if (!topic) return renderHome();
+    if (!topic) return route('practice');
     var tasks = L.pickTasks(topic, state.done, mode);
-    if (!tasks.length) return renderHome();
-    state.session = { topicId: topicId, tasks: tasks, index: 0, correct: 0, answered: false };
+    if (!tasks.length) return route('practice');
+    state.session = { topicId: topicId, tasks: tasks, index: 0, correct: 0, answered: false, back: 'practice' };
+    renderTask();
+  }
+
+  function startAssigned(taskIds, back) {
+    var pool = taskPool(), ans = liveAnswered(), tasks = [];
+    taskIds.forEach(function (id) { if (pool[id] && ans[id] === undefined) tasks.push(pool[id]); });
+    if (!tasks.length) return route(back);
+    state.session = { topicId: tasks[0].topicId, tasks: tasks, index: 0, correct: 0, answered: false, back: back,
+      title: back === 'debt' ? 'Нужно выполнить' : 'Задания на сегодня' };
     renderTask();
   }
 
   function renderTask() {
-    var s = state.session, topic = topicById(s.topicId);
-    if (!topic || s.index >= s.tasks.length) return renderFinish();
-
-    var task = s.tasks[s.index];
+    var s = state.session, task = s.tasks[s.index];
+    if (!task || s.index >= s.tasks.length) return renderFinish();
+    var topic = topicById(task.topicId || s.topicId);
     s.answered = false;
-    titleEl.textContent = topic.name;
+    document.getElementById('nav').style.display = 'none';
+    titleEl.textContent = s.title || (topic ? topic.name : 'Задания');
 
     var head = '<div class="muted">Задание ' + (s.index + 1) + ' из ' + s.tasks.length + '</div>' +
       '<div class="bar-p"><i style="width:' + Math.round(s.index * 100 / s.tasks.length) + '%"></i></div>' +
-      '<div class="q">' + esc(task.q) + '</div>';
+      '<div class="q">' + rich(task.q) + '</div>';
 
     if (task.type === 'choice') {
       view.innerHTML = '<div class="card">' + head + '<div class="opts" id="opts">' +
         task.options.map(function (o, i) { return '<button data-i="' + i + '">' + esc(o) + '</button>'; }).join('') +
-        '</div><div id="fb"></div></div><div class="row"><button id="quit">К темам</button></div>';
+        '</div><div id="fb"></div></div><div class="row"><button id="quit">Назад</button></div>';
       Array.prototype.forEach.call(view.querySelectorAll('#opts button'), function (b) {
         b.onclick = function () { answer(task, task.options[Number(b.getAttribute('data-i'))], b); };
       });
@@ -232,14 +471,14 @@
       view.innerHTML = '<div class="card">' + head +
         '<input type="text" id="ans" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Ответ">' +
         '<div class="row"><button class="primary" id="check">Проверить</button></div><div id="fb"></div></div>' +
-        '<div class="row"><button id="quit">К темам</button></div>';
+        '<div class="row"><button id="quit">Назад</button></div>';
       var input = document.getElementById('ans');
       var go = function () { if (input.value.trim()) answer(task, input.value, null); };
       document.getElementById('check').onclick = go;
       input.onkeydown = function (e) { if (e.key === 'Enter') go(); };
       input.focus();
     }
-    document.getElementById('quit').onclick = function () { renderHome(); };
+    document.getElementById('quit').onclick = function () { route(s.back || 'practice'); };
   }
 
   function answer(task, given, button) {
@@ -250,7 +489,7 @@
     var ok = L.isCorrect(task.answer, given);
     if (ok) s.correct++;
 
-    var attempt = { attempt_id: L.makeAttemptId(), task_id: task.id, topic_id: s.topicId, answer: String(given), answered_at: new Date().toISOString() };
+    var attempt = { attempt_id: L.makeAttemptId(), task_id: task.id, topic_id: task.topicId || s.topicId, answer: String(given), answered_at: new Date().toISOString() };
     var rec = { task_id: task.id, correct: ok, at: attempt.answered_at };
 
     // Сначала сохраняем на устройстве; показываем результат — и только потом пробуем отправить.
@@ -275,7 +514,7 @@
     var fb = document.getElementById('fb');
     fb.innerHTML = '<div class="fb ' + (ok ? 'ok' : 'bad') + '" role="status"><b>' + (ok ? 'Верно!' : 'Не совсем.') + '</b>' +
       (ok ? '' : '<div>Правильный ответ: <strong>' + esc(task.answer[0]) + '</strong></div>') +
-      (task.explanation ? '<div class="muted" style="margin-top:6px">' + esc(task.explanation) + '</div>' : '') + '</div>' +
+      (task.explanation ? '<div class="muted" style="margin-top:6px">' + rich(task.explanation) + '</div>' : '') + '</div>' +
       '<div class="row"><button class="primary" id="next">' + (s.index + 1 >= s.tasks.length ? 'Закончить' : 'Дальше') + '</button></div>';
     var next = document.getElementById('next');
     next.onclick = function () { s.index++; renderTask(); };
@@ -283,14 +522,14 @@
   }
 
   function renderFinish() {
-    var s = state.session, topic = topicById(s.topicId);
+    var s = state.session;
     titleEl.textContent = 'Готово';
     view.innerHTML = '<div class="card"><h2>Молодец!</h2><p>Верно ' + s.correct + ' из ' + s.tasks.length + '.</p>' +
       (state.queued ? '<p class="muted">Ответы сохранены на устройстве и отправятся, когда появится интернет.</p>' : '') +
-      '<div class="row"><button class="primary" id="home">К темам</button></div></div>';
-    document.getElementById('home').onclick = renderHome;
+      '<div class="row"><button class="primary" id="home">Готово</button></div></div>';
+    var back = s.back || 'practice';
     state.session = null;
-    void topic;
+    document.getElementById('home').onclick = function () { route(back); };
   }
 
   var syncTimer = null;
@@ -306,7 +545,7 @@
       .then(refreshCounters)
       .then(function () {
         renderStatus();
-        renderHome();
+        route('home');
         return syncNow(false);
       });
   }

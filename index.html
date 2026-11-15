@@ -46,6 +46,28 @@ input[type=text]{width:100%;font:inherit;font-size:22px;padding:12px 14px;border
 .fb b{display:block;margin-bottom:4px}
 .notice{margin:0 0 12px;padding:12px 14px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--accent);font-size:16px}
 .err{color:var(--bad)}
+nav.tabs{display:flex;gap:8px;overflow-x:auto;margin:0 0 16px;padding-bottom:4px}
+nav.tabs button{white-space:nowrap;min-height:48px;padding:8px 14px;font-weight:600}
+nav.tabs button[aria-current=page]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+nav.tabs .n{margin-left:6px;font-weight:700}
+nav.tabs .n.red{color:var(--bad)} nav.tabs button[aria-current=page] .n{color:inherit}
+.tbar{display:flex;height:10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;margin:10px 0}
+.tbar>i{display:block;height:100%} .tbar .g{background:var(--ok)} .tbar .r{background:var(--bad)}
+.good{color:var(--ok);font-weight:700} .debt{color:var(--bad);font-weight:700}
+.big{font-size:32px;font-weight:700;line-height:1.1}
+.big small{font-size:16px;font-weight:500;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px}
+.grid .card{margin:0}
+.links{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:0 0 16px}
+.links button{min-height:64px;text-align:left}
+.links button.red{border-color:var(--bad);color:var(--bad)}
+.day h3{margin:16px 0 8px;font-size:18px}
+.day.today h3{color:var(--accent)}
+.item{border-left:4px solid var(--line);padding:8px 12px;margin:0 0 8px;background:var(--surface);border-radius:0 12px 12px 0}
+.item.school{border-left-color:#c58b1a} .item.home{border-left-color:var(--accent)}
+.item .t{font-weight:700} .item .m{font-size:15px;color:var(--muted)}
+.weeknav{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.weeknav .range{font-weight:700;text-align:center;flex:1}
 @media (prefers-reduced-motion:no-preference){button{transition:background .15s,border-color .15s}}
 </style>
 </head>
@@ -55,9 +77,11 @@ input[type=text]{width:100%;font:inherit;font-size:22px;padding:12px 14px;border
     <h1 id="title">Задания</h1>
     <div class="status" id="status" aria-live="polite"></div>
   </header>
+  <nav class="tabs" id="nav" aria-label="Разделы"></nav>
   <main id="view"></main>
 </div>
 <script src="logic.js"></script>
+<script src="plan.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
