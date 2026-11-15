@@ -227,7 +227,7 @@
   }
 
   // ------------------------------------------------------------------ навигация
-  var TABS = [['home', 'Дашборд'], ['today', 'Сегодня'], ['debt', 'Нужно выполнить'], ['schedule', 'Расписание'], ['practice', 'Тренировка']];
+  var TABS = [['home', 'Дашборд'], ['today', 'Сегодня'], ['upcoming', 'Ближайшие'], ['debt', 'Нужно выполнить'], ['schedule', 'Расписание'], ['practice', 'Тренировка']];
 
   function renderNav() {
     document.getElementById('nav').style.display = '';
@@ -249,6 +249,7 @@
     renderNav();
     if (tab === 'today') return renderAssigned('today');
     if (tab === 'debt') return renderAssigned('debt');
+    if (tab === 'upcoming') return renderUpcoming();
     if (tab === 'schedule') return renderSchedule();
     if (tab === 'practice') return renderPractice();
     return renderDashboard();
@@ -268,11 +269,13 @@
 
     var html = '';
     if (st) {
+      var up = st.upcoming.reduce(function (n, d) { return n + d.ids.length; }, 0);
       html += '<div class="links">' +
         '<button data-go="schedule">🗓 Расписание</button>' +
         '<button data-go="today" class="primary">📱 Задания на сегодня<br><small>' + st.all.todayDone + ' из ' + st.all.today + '</small></button>' +
         '<button data-go="debt"' + (st.all.debt ? ' class="red"' : '') + '>⏳ Нужно выполнить<br><small>' +
-        (st.all.debt ? st.all.debt + ' ' + plural(st.all.debt, 'задание', 'задания', 'заданий') : 'долга нет') + '</small></button></div>';
+        (st.all.debt ? st.all.debt + ' ' + plural(st.all.debt, 'задание', 'задания', 'заданий') : 'долга нет') + '</small></button>' +
+        '<button data-go="upcoming">📅 Ближайшие<br><small>' + up + ' ' + plural(up, 'задание', 'задания', 'заданий') + '</small></button></div>';
     } else {
       html += '<div class="links"><button data-go="schedule">🗓 Расписание</button><button data-go="practice">📱 Тренировка</button></div>';
     }
@@ -360,6 +363,54 @@
     });
   }
 
+  // ------------------------------------------------------------------ ближайшие задания
+  function dayLabel(date) {
+    var p = date.split('-').map(Number), d = new Date(Date.UTC(p[0], p[1] - 1, p[2], 12));
+    var t = today().split('-').map(Number), diff = Math.round((d - Date.UTC(t[0], t[1] - 1, t[2], 12)) / 86400000);
+    var name = 'Завтра';
+    if (diff !== 1) {
+      try { name = d.toLocaleDateString('ru-RU', { weekday: 'long', timeZone: 'UTC' }); name = name.charAt(0).toUpperCase() + name.slice(1); } catch (e) { name = date; }
+    }
+    return name + ', ' + ('0' + p[2]).slice(-2) + '.' + ('0' + p[1]).slice(-2);
+  }
+
+  function renderUpcoming() {
+    titleEl.textContent = 'Ближайшие задания';
+    if (!state.pack || !state.pack.plan) {
+      view.innerHTML = '<div class="card"><h2>Заданий по расписанию пока нет</h2><p class="muted">Нажмите «Синхронизировать» при подключении к интернету.</p></div>';
+      return;
+    }
+    var st = liveStats(), pool = taskPool(), ans = liveAnswered();
+    var days = st.upcoming.filter(function (d) { return d.ids.some(function (id) { return pool[id]; }); });
+    if (!days.length) {
+      view.innerHTML = '<div class="card"><h2>Ближайших заданий нет</h2><p class="muted">Они выдаются по расписанию заранее, когда в занятиях указана тема с заданиями.</p></div>';
+      return;
+    }
+
+    var starts = [];
+    view.innerHTML = days.map(function (d) {
+      var byTopic = {}, groups = [];
+      d.ids.forEach(function (id) {
+        var t = pool[id]; if (!t) return;
+        if (!byTopic[t.topicId]) { byTopic[t.topicId] = { topicId: t.topicId, total: 0, left: [] }; groups.push(byTopic[t.topicId]); }
+        byTopic[t.topicId].total++;
+        if (ans[id] === undefined) byTopic[t.topicId].left.push(id);
+      });
+      var total = groups.reduce(function (n, g) { return n + g.total; }, 0);
+      return '<h2 style="margin:16px 0 8px">' + esc(dayLabel(d.date)) + ' · ' + total + ' ' + plural(total, 'задание', 'задания', 'заданий') + '</h2>' +
+        groups.map(function (g) {
+          var topic = topicById(g.topicId), idx = starts.push(g.left) - 1;
+          return '<section class="card"><h2>' + esc(topic ? topic.name : g.topicId) + '</h2>' +
+            (topic && topic.subject ? '<div class="muted">' + esc(topic.subject) + '</div>' : '') +
+            '<div class="muted">' + g.total + ' ' + plural(g.total, 'задание', 'задания', 'заданий') + (g.total - g.left.length ? ' · уже решено ' + (g.total - g.left.length) : '') + '</div>' +
+            (g.left.length ? '<div class="row"><button data-u="' + idx + '">Решить заранее (' + g.left.length + ')</button></div>' : '') + '</section>';
+        }).join('');
+    }).join('');
+    Array.prototype.forEach.call(view.querySelectorAll('[data-u]'), function (b) {
+      b.onclick = function () { startAssigned(starts[Number(b.getAttribute('data-u'))], 'upcoming'); };
+    });
+  }
+
   // ------------------------------------------------------------------ расписание
   function renderSchedule() {
     titleEl.textContent = 'Расписание';
@@ -444,7 +495,7 @@
     taskIds.forEach(function (id) { if (pool[id] && ans[id] === undefined) tasks.push(pool[id]); });
     if (!tasks.length) return route(back);
     state.session = { topicId: tasks[0].topicId, tasks: tasks, index: 0, correct: 0, answered: false, back: back,
-      title: back === 'debt' ? 'Нужно выполнить' : 'Задания на сегодня' };
+      title: back === 'debt' ? 'Нужно выполнить' : back === 'upcoming' ? 'Ближайшие задания' : 'Задания на сегодня' };
     renderTask();
   }
 

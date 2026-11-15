@@ -21,7 +21,7 @@
       if (answered[t.id] !== undefined) { s.answered++; if (answered[t.id]) s.correct++; }
     });
 
-    var todayList = [], debtList = [], seen = {}, todayDone = 0;
+    var todayList = [], debtList = [], seen = {}, todayDone = 0, upcoming = [], upcomingByDate = {};
 
     input.plan
       .map(function (r, i) { return { r: r, i: i }; })
@@ -40,6 +40,9 @@
         } else if (r.date < input.today && !done) {
           debtList.push(r.taskId);
           if (sid) slot(sid).debt++;
+        } else if (r.date > input.today) {
+          if (!upcomingByDate[r.date]) { upcomingByDate[r.date] = { date: r.date, ids: [] }; upcoming.push(upcomingByDate[r.date]); }
+          upcomingByDate[r.date].ids.push(r.taskId);
         }
       });
 
@@ -48,7 +51,7 @@
       all.total += bySubject[id].total; all.answered += bySubject[id].answered; all.correct += bySubject[id].correct;
     });
 
-    return { bySubject: bySubject, all: all, todayList: todayList, debtList: debtList };
+    return { bySubject: bySubject, all: all, todayList: todayList, debtList: debtList, upcoming: upcoming };
   }
 
   /** Сегодняшняя дата в Стамбуле («yyyy-MM-dd»); без Intl — по часам устройства. */
