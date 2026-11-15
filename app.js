@@ -382,13 +382,36 @@
     }
     var st = liveStats(), pool = taskPool(), ans = liveAnswered();
     var days = st.upcoming.filter(function (d) { return d.ids.some(function (id) { return pool[id]; }); });
-    if (!days.length) {
+
+    // «В свободное время»: нерешённые задания, которые никому не выданы
+    var planned = {};
+    state.pack.plan.forEach(function (r) { planned[r.taskId] = true; });
+    var free = [], freeBy = {};
+    Object.keys(pool).forEach(function (id) {
+      if (planned[id] || ans[id] !== undefined) return;
+      var t = pool[id];
+      if (!freeBy[t.topicId]) { freeBy[t.topicId] = { topicId: t.topicId, ids: [] }; free.push(freeBy[t.topicId]); }
+      freeBy[t.topicId].ids.push(id);
+    });
+
+    if (!days.length && !free.length) {
       view.innerHTML = '<div class="card"><h2>Ближайших заданий нет</h2><p class="muted">Они выдаются по расписанию заранее, когда в занятиях указана тема с заданиями.</p></div>';
       return;
     }
 
     var starts = [];
-    view.innerHTML = days.map(function (d) {
+    var freeHtml = free.length
+      ? '<h2 style="margin:16px 0 4px">В свободное время</h2><p class="muted" style="margin:0 0 8px">Эти задания пока никому не выданы — можно решить заранее.</p>' +
+        free.map(function (g) {
+          var topic = topicById(g.topicId), n = Math.min(10, g.ids.length), idx = starts.push(g.ids.slice(0, n)) - 1;
+          return '<section class="card"><h2>' + esc(topic ? topic.name : g.topicId) + '</h2>' +
+            (topic && topic.subject ? '<div class="muted">' + esc(topic.subject) + '</div>' : '') +
+            '<div class="muted">Осталось ' + g.ids.length + ' ' + plural(g.ids.length, 'задание', 'задания', 'заданий') + '</div>' +
+            '<div class="row"><button data-u="' + idx + '">Решить ' + n + '</button></div></section>';
+        }).join('')
+      : '';
+
+    view.innerHTML = (days.length ? '' : '<p class="muted">Выданных на ближайшие дни заданий пока нет — они появятся после утренней выдачи или следующей синхронизации.</p>') + days.map(function (d) {
       var byTopic = {}, groups = [];
       d.ids.forEach(function (id) {
         var t = pool[id]; if (!t) return;
@@ -405,7 +428,7 @@
             '<div class="muted">' + g.total + ' ' + plural(g.total, 'задание', 'задания', 'заданий') + (g.total - g.left.length ? ' · уже решено ' + (g.total - g.left.length) : '') + '</div>' +
             (g.left.length ? '<div class="row"><button data-u="' + idx + '">Решить заранее (' + g.left.length + ')</button></div>' : '') + '</section>';
         }).join('');
-    }).join('');
+    }).join('') + freeHtml;
     Array.prototype.forEach.call(view.querySelectorAll('[data-u]'), function (b) {
       b.onclick = function () { startAssigned(starts[Number(b.getAttribute('data-u'))], 'upcoming'); };
     });
@@ -513,7 +536,7 @@
 
     if (task.type === 'choice') {
       view.innerHTML = '<div class="card">' + head + '<div class="opts" id="opts">' +
-        task.options.map(function (o, i) { return '<button data-i="' + i + '">' + esc(o) + '</button>'; }).join('') +
+        task.options.map(function (o, i) { return '<button data-i="' + i + '">' + rich(o) + '</button>'; }).join('') +
         '</div><div id="fb"></div></div><div class="row"><button id="quit">Назад</button></div>';
       Array.prototype.forEach.call(view.querySelectorAll('#opts button'), function (b) {
         b.onclick = function () { answer(task, task.options[Number(b.getAttribute('data-i'))], b); };
@@ -564,7 +587,7 @@
 
     var fb = document.getElementById('fb');
     fb.innerHTML = '<div class="fb ' + (ok ? 'ok' : 'bad') + '" role="status"><b>' + (ok ? 'Верно!' : 'Не совсем.') + '</b>' +
-      (ok ? '' : '<div>Правильный ответ: <strong>' + esc(task.answer[0]) + '</strong></div>') +
+      (ok ? '' : '<div>Правильный ответ: <strong>' + rich(task.answer[0]) + '</strong></div>') +
       (task.explanation ? '<div class="muted" style="margin-top:6px">' + rich(task.explanation) + '</div>' : '') + '</div>' +
       '<div class="row"><button class="primary" id="next">' + (s.index + 1 >= s.tasks.length ? 'Закончить' : 'Дальше') + '</button></div>';
     var next = document.getElementById('next');
