@@ -440,7 +440,7 @@
           '<div class="m">' + esc([loc, it.duration ? duration(it.duration) : ''].filter(Boolean).join(' · ')) + '</div>' +
           (it.activity ? '<div class="m">' + esc(it.activity) + '</div>' : '') +
           (it.topic ? '<div class="m">📖 ' + esc(it.topic.name) + '</div>' : '') +
-          (it.tasksMode === 'app' ? '<div class="m">📱 Задания в приложении</div>' : it.tasksMode === 'book' ? '<div class="m">📖 Задания в книжке</div>' : '') +
+          (it.tasksMode === 'app' ? '<div class="m">📱 Задания в приложении' + (it.autoTopic ? ' · ' + esc(it.autoTopic) : '') + '</div>' : it.tasksMode === 'book' ? '<div class="m">📖 Задания в книжке</div>' : '') +
           '</div>';
       });
       html += '</section>';
