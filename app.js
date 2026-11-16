@@ -47,6 +47,22 @@
   function rich(v) {
     return esc(v).replace(/\\n/g, '<br>').replace(/__(.+?)__/g, '<u>$1</u>');
   }
+  // Рисунок к заданию: файл лежит в папке img/ рядом с приложением (GitHub Pages) и кэшируется для офлайна.
+  function figure(task) {
+    if (!task.img || !/^[A-Za-z0-9_.-]+$/.test(task.img)) return '';
+    return '<div class="fig"><img src="img/' + esc(task.img) + '" alt="Рисунок к заданию" onerror="this.parentNode.className=\'fig miss\';this.parentNode.textContent=\'Рисунок не загрузился. Откройте приложение с интернетом.\'"></div>';
+  }
+  // Скачивает рисунки заранее, пока есть интернет: service worker кладёт их в кэш.
+  function prefetchImages(pack) {
+    try {
+      var seen = {};
+      ((pack && pack.topics) || []).forEach(function (t) {
+        (t.tasks || []).forEach(function (k) {
+          if (k.img && !seen[k.img] && /^[A-Za-z0-9_.-]+$/.test(k.img)) { seen[k.img] = 1; fetch('img/' + k.img).catch(function () {}); }
+        });
+      });
+    } catch (e) { /* без рисунков приложение работает */ }
+  }
   function plural(n, a, b, c) {
     var x = Math.abs(n) % 100, y = x % 10;
     return (x > 10 && x < 20) ? c : y === 1 ? a : (y >= 2 && y <= 4) ? b : c;
@@ -152,6 +168,7 @@
     }).then(function (res) {
       if (res.ok !== true) throw new Error(res.error === 'forbidden' ? 'forbidden' : 'Сервер не отдал задания');
       state.pack = res.pack;
+      prefetchImages(res.pack);
       return kvSet('pack', res.pack);
     }).then(function () {
       state.lastSync = new Date().toISOString();
@@ -532,7 +549,7 @@
 
     var head = '<div class="muted">Задание ' + (s.index + 1) + ' из ' + s.tasks.length + '</div>' +
       '<div class="bar-p"><i style="width:' + Math.round(s.index * 100 / s.tasks.length) + '%"></i></div>' +
-      '<div class="q">' + rich(task.q) + '</div>';
+      '<div class="q">' + rich(task.q) + '</div>' + figure(task);
 
     if (task.type === 'choice') {
       view.innerHTML = '<div class="card">' + head + '<div class="opts" id="opts">' +
