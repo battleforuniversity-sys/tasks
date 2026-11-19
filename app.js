@@ -5,8 +5,9 @@
   var view = document.getElementById('view');
   var statusEl = document.getElementById('status');
   var titleEl = document.getElementById('title');
+  document.getElementById('dyncss').textContent = P.dynCss();
 
-  var state = { config: null, pack: null, done: {}, queued: 0, lastSync: '', syncing: false, syncError: '', session: null, tab: 'home', weekIdx: null };
+  var state = { config: null, pack: null, done: {}, queued: 0, lastSync: '', syncing: false, syncError: '', session: null, tab: 'home', weekIdx: null, dynSubject: '', dynMetric: 'all', queueItems: [] };
 
   // ------------------------------------------------------------------ хранилище (IndexedDB)
   var dbPromise = new Promise(function (resolve, reject) {
@@ -125,6 +126,7 @@
   function refreshCounters() {
     return Promise.all([queueAll(), doneAll()]).then(function (r) {
       state.queued = r[0].length;
+      state.queueItems = r[0];
       state.done = {};
       r[1].forEach(function (d) { state.done[d.task_id] = d; });
     });
@@ -244,7 +246,7 @@
   }
 
   // ------------------------------------------------------------------ навигация
-  var TABS = [['home', 'Дашборд'], ['today', 'Сегодня'], ['upcoming', 'Ближайшие'], ['debt', 'Нужно выполнить'], ['schedule', 'Расписание'], ['practice', 'Тренировка']];
+  var TABS = [['home', 'Дашборд'], ['today', 'Сегодня'], ['upcoming', 'Ближайшие'], ['debt', 'Нужно выполнить'], ['schedule', 'Расписание'], ['dynamics', 'Динамика'], ['practice', 'Тренировка']];
 
   function renderNav() {
     document.getElementById('nav').style.display = '';
@@ -268,6 +270,7 @@
     if (tab === 'debt') return renderAssigned('debt');
     if (tab === 'upcoming') return renderUpcoming();
     if (tab === 'schedule') return renderSchedule();
+    if (tab === 'dynamics') return renderDynamics();
     if (tab === 'practice') return renderPractice();
     return renderDashboard();
   }
@@ -332,6 +335,72 @@
     if (state.pack.generatedAt) html += '<p class="muted">Данные от ' + esc(clock(state.pack.generatedAt)) + '. Задания и долг считаются на этом устройстве сразу.</p>';
     view.innerHTML = html;
     Array.prototype.forEach.call(view.querySelectorAll('[data-go]'), function (b) { b.onclick = function () { route(b.getAttribute('data-go')); }; });
+  }
+
+  // ------------------------------------------------------------------ динамика по неделям
+  /** Журнал всех ответов: с сервера + ответы с этого устройства, которые ещё не отправлены. */
+  function dynamicsLog() {
+    var dyn = (state.pack && state.pack.dyn) || { log: [], subjects: [] };
+    var log = dyn.log.slice();
+    var topicSubject = {};
+    (state.pack ? state.pack.topics : []).forEach(function (t) { if (t.subjectId) topicSubject[t.id] = t.subjectId; });
+    var pool = taskPool();
+    (state.queueItems || []).forEach(function (a) {
+      var task = pool[a.task_id];
+      if (!task) return;
+      var sid = topicSubject[task.topicId || a.topic_id], when = new Date(a.answered_at);
+      if (!sid || isNaN(when.getTime())) return;
+      log.push({ t: a.task_id, s: sid, d: P.todayInIstanbul(when), at: when.toISOString(), ok: L.isCorrect(task.answer, a.answer) });
+    });
+    return { log: log, subjects: dyn.subjects || [] };
+  }
+
+  function renderDynamics() {
+    titleEl.textContent = 'Динамика по неделям';
+    if (!state.pack) {
+      view.innerHTML = '<div class="card"><h2>Данных пока нет</h2><p class="muted">Нажмите «Синхронизировать» при подключении к интернету.</p></div>';
+      return;
+    }
+    var d = dynamicsLog();
+    var model = P.weeklyDynamics({ today: today(), weeks: 12, log: d.log, subjects: d.subjects });
+    if (!model.weeks.length) {
+      view.innerHTML = '<div class="card"><h2>Ответов пока нет</h2><p class="muted">Диаграмма появится после первых ответов.</p></div>';
+      return;
+    }
+    var known = {};
+    model.subjects.forEach(function (s) { known[s.id] = true; });
+    var sel = state.dynSubject && known[state.dynSubject] ? state.dynSubject : '';
+    var met = P.dynMetrics[state.dynMetric] ? state.dynMetric : 'all';
+    var sum = function (s) { return model.weeks.reduce(function (n, w) { return n + (w[met][s.id] || 0); }, 0); };
+    var all = model.subjects.reduce(function (n, s) { return n + sum(s); }, 0);
+
+    var html = '<div class="chips" role="group" aria-label="Что показывать">' + Object.keys(P.dynMetrics).map(function (k) {
+      return '<button data-met="' + k + '"' + (k === met ? ' aria-pressed="true"' : '') + '>' + esc(P.dynMetrics[k]) + '</button>';
+    }).join('') + '</div>';
+    html += '<div class="chips" role="group" aria-label="Предмет"><button data-sub=""' + (!sel ? ' aria-pressed="true"' : '') + '>Все предметы <span class="n">' + all + '</span></button>' +
+      model.subjects.map(function (s) {
+        return '<button data-sub="' + esc(s.id) + '"' + (sel === s.id ? ' aria-pressed="true"' : '') + '><i class="dsw dc' + s.color + '"></i> ' + esc(s.name) + ' <span class="n">' + sum(s) + '</span></button>';
+      }).join('') + '</div>';
+
+    var t = P.dynWeekTotals(model, model.weeks[model.weeks.length - 1], sel);
+    html += '<p class="dynsum"><strong>Эта неделя:</strong> ' + t.all + ' ответов · ' + t.wrong + ' неверных' + (t.all ? ' (' + t.pct + '%)' : '') + ' · ' + t.rep + ' повторов</p>';
+    html += '<section class="card"><h2>' + esc(P.dynMetrics[met]) + ' по неделям</h2>' + P.dynamicsSvg(model, sel, met) +
+      '<p class="muted">Неделя — с понедельника. Считается каждый ответ; повтор — ответ на задание, на которое уже отвечали.</p></section>';
+
+    var rows = model.weeks.slice().reverse().map(function (w) {
+      var x = P.dynWeekTotals(model, w, sel), p = w.start.split('-');
+      return '<tr' + (w.current ? ' class="now"' : '') + '><td>' + p[2] + '.' + p[1] + (w.current ? ' · эта' : '') + '</td><td>' + x.all + '</td><td>' + x.wrong +
+        (x.all ? ' <span class="n">(' + x.pct + '%)</span>' : '') + '</td><td>' + x.rep + '</td></tr>';
+    }).join('');
+    html += '<section class="card"><h2>В цифрах</h2><div class="tablewrap"><table class="dtable"><thead><tr><th>Неделя</th><th>Всего</th><th>Неверно</th><th>Повторы</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+
+    view.innerHTML = html;
+    Array.prototype.forEach.call(view.querySelectorAll('[data-sub]'), function (b) {
+      b.onclick = function () { state.dynSubject = b.getAttribute('data-sub'); renderDynamics(); };
+    });
+    Array.prototype.forEach.call(view.querySelectorAll('[data-met]'), function (b) {
+      b.onclick = function () { state.dynMetric = b.getAttribute('data-met'); renderDynamics(); };
+    });
   }
 
   // ------------------------------------------------------------------ задания на сегодня / нужно выполнить

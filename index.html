@@ -72,7 +72,19 @@ nav.tabs .n.red{color:var(--bad)} nav.tabs button[aria-current=page] .n{color:in
 .weeknav{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px}
 .weeknav .range{font-weight:700;text-align:center;flex:1}
 @media (prefers-reduced-motion:no-preference){button{transition:background .15s,border-color .15s}}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.chips button{min-height:44px;padding:6px 14px;border-radius:999px;font-weight:600;font-size:16px}
+.chips button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.chips .n,.dtable .n{color:var(--muted);font-variant-numeric:tabular-nums}
+.dynsum{margin:0 0 12px}
+.dtable{width:100%;border-collapse:collapse;font-size:16px;font-variant-numeric:tabular-nums}
+.dtable th,.dtable td{padding:6px 6px;white-space:nowrap;border-bottom:1px solid var(--line);text-align:right}
+.dtable th:first-child,.dtable td:first-child{text-align:left;white-space:nowrap}
+.dtable th{color:var(--muted);font-weight:600}
+.dtable tr.now td:first-child{font-weight:700}
+.tablewrap{overflow-x:auto}
 </style>
+<style id="dyncss"></style>
 </head>
 <body>
 <div class="wrap">
