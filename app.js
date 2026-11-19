@@ -246,7 +246,7 @@
   }
 
   // ------------------------------------------------------------------ навигация
-  var TABS = [['home', 'Дашборд'], ['today', 'Сегодня'], ['upcoming', 'Ближайшие'], ['debt', 'Нужно выполнить'], ['schedule', 'Расписание'], ['dynamics', 'Динамика'], ['practice', 'Тренировка']];
+  var TABS = [['home', 'Дашборд'], ['today', 'Сегодня'], ['upcoming', 'Скоро'], ['debt', 'Долг'], ['schedule', 'Неделя'], ['dynamics', 'Динамика'], ['practice', 'Тренировка']];
 
   function renderNav() {
     document.getElementById('nav').style.display = '';
