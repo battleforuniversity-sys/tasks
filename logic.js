@@ -43,7 +43,9 @@
       var d = done[t.id];
       if (d) { answered++; if (d.correct) correct++; }
     });
-    return { total: topic.tasks.length, answered: answered, correct: correct, wrong: answered - correct };
+    var retry = 0;
+    topic.tasks.forEach(function (t) { var d = done[t.id]; if (d && d.correct && d.retry) retry++; });
+    return { total: topic.tasks.length, answered: answered, correct: correct, wrong: answered - correct + retry };
   }
 
   /** mode: 'new' — ещё не решённые; 'wrong' — решённые с ошибкой; 'all' — все. */
@@ -51,7 +53,7 @@
     return topic.tasks.filter(function (t) {
       var d = done[t.id];
       if (mode === 'new') return !d;
-      if (mode === 'wrong') return d && !d.correct;
+      if (mode === 'wrong') return d && (!d.correct || d.retry);
       return true;
     });
   }

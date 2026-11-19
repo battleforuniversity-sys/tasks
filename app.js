@@ -2,6 +2,7 @@
 (function () {
   'use strict';
   var L = window.Logic, P = window.Plan;
+  var RETRY_MARK = '[повтор]';   // служебный ответ «отметить на повтор»; тот же текст в PageDynamics.gs
   var view = document.getElementById('view');
   var statusEl = document.getElementById('status');
   var titleEl = document.getElementById('title');
@@ -347,7 +348,7 @@
     var pool = taskPool();
     (state.queueItems || []).forEach(function (a) {
       var task = pool[a.task_id];
-      if (!task) return;
+      if (!task || String(a.answer).indexOf(RETRY_MARK) === 0) return;
       var sid = topicSubject[task.topicId || a.topic_id], when = new Date(a.answered_at);
       if (!sid || isNaN(when.getTime())) return;
       log.push({ t: a.task_id, s: sid, d: P.todayInIstanbul(when), at: when.toISOString(), ok: L.isCorrect(task.answer, a.answer) });
@@ -675,10 +676,31 @@
     fb.innerHTML = '<div class="fb ' + (ok ? 'ok' : 'bad') + '" role="status"><b>' + (ok ? 'Верно!' : 'Не совсем.') + '</b>' +
       (ok ? '' : '<div>Правильный ответ: <strong>' + rich(task.answer[0]) + '</strong></div>') +
       (task.explanation ? '<div class="muted" style="margin-top:6px">' + rich(task.explanation) + '</div>' : '') + '</div>' +
-      '<div class="row"><button class="primary" id="next">' + (s.index + 1 >= s.tasks.length ? 'Закончить' : 'Дальше') + '</button></div>';
+      '<div class="row"><button id="flag" aria-pressed="false">🔁 Сложное — на повтор</button>' +
+      '<button class="primary" id="next">' + (s.index + 1 >= s.tasks.length ? 'Закончить' : 'Дальше') + '</button></div>';
+    document.getElementById('flag').onclick = function () { flagForRetry(task, ok, given, this); };
     var next = document.getElementById('next');
     next.onclick = function () { s.index++; renderTask(); };
     next.focus();
+  }
+
+  // «На повтор»: ребёнок отмечает задание сложным, даже если ответил верно. Верный ответ остаётся верным.
+  // На сервер уходит служебная запись «[повтор] <ответ>»: сервер оценивает ответ после метки, поэтому
+  // правильность не меняется, а динамика отметку за ответ не считает (см. dynamicsLog и loadDynamicsLog_).
+  function flagForRetry(task, wasCorrect, given, button) {
+    var s = state.session;
+    if (!s || button.getAttribute('aria-pressed') === 'true') return;
+    button.setAttribute('aria-pressed', 'true');
+    button.disabled = true;
+    button.textContent = '✓ Отмечено на повтор';
+    var at = new Date().toISOString();
+    var attempt = { attempt_id: L.makeAttemptId(), task_id: task.id, topic_id: task.topicId || s.topicId, answer: RETRY_MARK + ' ' + String(given), answered_at: at };
+    var rec = { task_id: task.id, correct: wasCorrect, at: at, retry: true };
+    Promise.all([queuePut(attempt), donePut(rec)]).then(refreshCounters).then(function () {
+      state.done[task.id] = rec;
+      renderStatus();
+      if (navigator.onLine) syncSoon();
+    });
   }
 
   function renderFinish() {
