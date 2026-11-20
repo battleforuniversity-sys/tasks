@@ -136,6 +136,7 @@
   function renderStatus() {
     var online = navigator.onLine;
     var html = '<span class="pill ' + (online ? 'ok' : 'warn') + '">' + (online ? 'Есть сеть' : 'Нет сети') + '</span>';
+    html += '<span class="pill">v12</span>';
     html += '<span class="pill ' + (state.queued ? 'warn' : '') + '">Не отправлено: ' + state.queued + '</span>';
     if (state.syncError) html += '<span class="pill warn" role="alert">' + esc(state.syncError) + '</span>';
     else if (state.lastSync) html += '<span class="pill">Синхронизировано в ' + esc(clock(state.lastSync)) + '</span>';
@@ -733,7 +734,16 @@
   }
 
   function init() {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+    if ('serviceWorker' in navigator) {
+      var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+      // Новая версия приложения подхватывается сама: один раз перезагружаем страницу, когда сменился сервис-воркер.
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (!hadController || reloaded) return;
+        reloaded = true;
+        if (!document.getElementById('flag')) location.reload();   // не перезагружаем посреди карточки задания
+      });
+      navigator.serviceWorker.register('sw.js').then(function (reg) { reg.update(); }).catch(function () {});
+    }
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
 
     window.addEventListener('online', function () { syncNow(false); });
