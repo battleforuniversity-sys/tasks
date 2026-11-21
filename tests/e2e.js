@@ -69,6 +69,7 @@ async function mockApi(route) {
     const tomorrow = new Date(day.getTime() + 86400000);
     pack.plan = pack.plan.concat(ids.slice(6, 9).map(id => ({ date: iso(tomorrow), topicId: tasks[0].topicId, subjectId: 'ENG', taskId: id })));
     pack.answered = {};
+    pack.flags = { showBook: false };
     pack.vocab = { words: JSON.parse(JSON.stringify(vocabWords)), state: {}, dyn: { days: [{ d: iso(new Date(day.getTime() - 3 * 86400000)), l: 'tr', r: 10, ok: 7, lk: 1 }] } };
     pack.dyn = { subjects: [{ id: 'ENG', name: 'Английский' }, { id: 'BIO', name: 'Биология' }],
       log: [{ t: 'x1', s: 'ENG', d: iso(new Date(day.getTime() - 8 * 86400000)) }, { t: 'x2', s: 'BIO', d: iso(new Date(day.getTime() - 9 * 86400000)) }, { t: 'x3', s: 'BIO', d: iso(new Date(day.getTime() - 15 * 86400000)) }] };
@@ -106,7 +107,7 @@ async function mockApi(route) {
   assert.ok(dash.includes('Слова: не делали 2 дня подряд'), 'дашборд: слова не делали 2 дня — красным: ' + dash.slice(0, 250));
   assert.ok(await page.locator('.links button.red:has-text("📚 Слова")').count() === 1, 'кнопка слов красная');
   assert.ok(dash.includes('Нужно выполнить') && /Нужно выполнить[\s\S]*слова: не делали 2 дня подряд/.test(dash), 'на кнопке долга: слова — пропущенные дни');
-  assert.ok(dash.includes('📱 Задания в приложении') && dash.includes('📖 Задания в книжке'), 'значки по предметам');
+  assert.ok(dash.includes('📱 Задания в приложении') && !dash.includes('📖 Задания в книжке'), 'значки по предметам: «в книжке» выключена');
   assert.ok((await text('#nav')).includes('Долг'));
   await page.click('#nav [data-tab=upcoming]');
   const up = await text('#view');
@@ -127,7 +128,7 @@ async function mockApi(route) {
   await page.click('#nav [data-tab=schedule]');
   const sched = await text('#view');
   assert.ok(sched.includes('📚 Слова · 10 мин') && sched.includes('в любое время дня'), 'в расписании есть блок «Слова»');
-  assert.ok(sched.includes('16:00–17:00 · Английский') && sched.includes('📱 Задания в приложении') && sched.includes('📖 Задания в книжке'), 'расписание офлайн');
+  assert.ok(sched.includes('16:00–17:00 · Английский') && sched.includes('📱 Задания в приложении') && !sched.includes('📖 Задания в книжке'), 'расписание офлайн: плашка «в книжке» выключена');
   await page.click('#nav [data-tab=today]');
   assert.ok((await text('#view')).includes('Сделано 0 из 3'));
   await page.click('#nav [data-tab=practice]');
@@ -276,7 +277,8 @@ async function mockApi(route) {
   await page.click('#wSave');
   await page.waitForSelector('.err', { timeout: 5000 });
   assert.ok(await page.locator('.err').count() >= 1, 'дубль отклонён');
-  await page.click('#wBack');
+  await page.evaluate(() => document.getElementById('wBack').click());    // экран перерисовывается при каждой ошибке — клик по актуальной кнопке
+  await page.waitForSelector('text=Всего слов');
   assert.ok((await text('#view')).includes('tembel'), 'своё слово видно в списке сразу, без сети');
   ok('своё слово добавлено офлайн, дубль отклонён');
 
@@ -291,6 +293,19 @@ async function mockApi(route) {
   await page.waitForTimeout(800);
   assert.strictEqual(vocabEvents.length, evCount, 'повторная синхронизация без дублей');
   ok('слова: ' + evCount + ' событий и своё слово дошли до сервера без дублей');
+
+  // фоновая синхронизация не стирает то, что ребёнок набирает в форме «Добавить слово»
+  await page.click('#nav [data-tab=words]');
+  await page.click('#addWord');
+  await page.fill('#wTerm', 'sabırlı');
+  await page.fill('#wTl', 'терпеливый');
+  await page.click('#syncBtn');
+  await page.waitForTimeout(1800);
+  assert.strictEqual(await page.inputValue('#wTerm'), 'sabırlı', 'синхронизация стёрла набранное слово');
+  assert.strictEqual(await page.inputValue('#wTl'), 'терпеливый');
+  await page.evaluate(() => document.getElementById('wBack').click());
+  await page.waitForSelector('text=Всего слов');
+  ok('форма «Добавить слово» переживает фоновую синхронизацию');
 
   // Динамика: слова по неделям, турецкие и английские отдельно
   await page.click('#nav [data-tab=dynamics]');
