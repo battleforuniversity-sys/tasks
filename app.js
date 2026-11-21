@@ -8,7 +8,7 @@
   var titleEl = document.getElementById('title');
   document.getElementById('dyncss').textContent = P.dynCss();
 
-  var state = { vnew: [], vstate: {}, vq: [], vdaily: { date: '', n: 0 }, wordsFilter: 'all', wordsQuery: '', config: null, pack: null, done: {}, queued: 0, lastSync: '', syncing: false, syncError: '', session: null, tab: 'home', weekIdx: null, dynSubject: '', dynMetric: 'all', queueItems: [] };
+  var state = { vnew: [], vstate: {}, vq: [], vdaily: { date: '', n: 0 }, wordsLang: '', wordsFilter: 'all', wordsQuery: '', config: null, pack: null, done: {}, queued: 0, lastSync: '', syncing: false, syncError: '', session: null, tab: 'home', weekIdx: null, dynSubject: '', dynMetric: 'all', queueItems: [] };
 
   // ------------------------------------------------------------------ хранилище (IndexedDB)
   var dbPromise = new Promise(function (resolve, reject) {
@@ -135,7 +135,7 @@
 
   // ------------------------------------------------------------------ синхронизация
   function refreshCounters() {
-    return Promise.all([queueAll(), doneAll(), vnewAll(), vstateAll(), vqAll(), kvGet('vdaily')]).then(function (r) {
+    return Promise.all([queueAll(), doneAll(), vnewAll(), vstateAll(), vqAll(), kvGet('vdaily'), kvGet('wlang')]).then(function (r) {
       state.queued = r[0].length;
       state.queueItems = r[0];
       state.done = {};
@@ -146,13 +146,14 @@
       state.vq = r[4];
       var d = r[5];
       state.vdaily = d && d.date === today() ? d : { date: today(), n: 0 };
+      state.wordsLang = r[6] === 'tr' || r[6] === 'en' ? r[6] : '';
     });
   }
 
   function renderStatus() {
     var online = navigator.onLine;
     var html = '<span class="pill ' + (online ? 'ok' : 'warn') + '">' + (online ? 'Есть сеть' : 'Нет сети') + '</span>';
-    html += '<span class="pill">v13</span>';
+    html += '<span class="pill">v14</span>';
     html += '<span class="pill ' + (state.queued + state.vq.length + state.vnew.length ? 'warn' : '') + '">Не отправлено: ' + (state.queued + state.vq.length + state.vnew.length) + '</span>';
     if (state.syncError) html += '<span class="pill warn" role="alert">' + esc(state.syncError) + '</span>';
     else if (state.lastSync) html += '<span class="pill">Синхронизировано в ' + esc(clock(state.lastSync)) + '</span>';
@@ -295,18 +296,25 @@
     var words = allWords(), states = allStates();
     var done = state.vdaily.n;
     var total = extra ? 10 : Math.max(0, WORDS_DAILY - done);
-    var s = L.pickSession(words, states, today(), { total: total, newLimit: extra ? 5 : WORDS_NEW_PER_DAY });
-    return { words: words, states: states, session: s, count: s.due.length + s.fresh.length, done: done };
+    // Язык блока: «вперемешку» (по умолчанию) или только турецкие / только английские. Подсказки-варианты берутся из всех слов.
+    var lang = state.wordsLang;
+    var pool = lang ? words.filter(function (w) { return w.l === lang; }) : words;
+    var s = L.pickSession(pool, states, today(), { total: total, newLimit: extra ? 5 : WORDS_NEW_PER_DAY });
+    return { words: words, pool: pool, states: states, session: s, count: s.due.length + s.fresh.length, done: done };
   }
 
   function wordsCardHtml() {
     var pl = wordsPlan(false);
-    var body = pl.words.length
+    var langNames = { '': 'Вперемешку', tr: 'Турецкие', en: 'English' };
+    var chips = '<div class="chips" role="group" aria-label="Какие слова повторять">' + ['', 'tr', 'en'].map(function (k) {
+      return '<button data-wl="' + k + '"' + (state.wordsLang === k ? ' aria-pressed="true"' : '') + '>' + langNames[k] + '</button>';
+    }).join('') + '</div>';
+    var body = pl.pool.length
       ? (pl.count ? 'Повторить: ' + pl.session.due.length + ' · новых: ' + pl.session.fresh.length : '✓ На сегодня всё')
       : 'Слов пока нет — добавьте своё или дождитесь слов из заданий';
     return '<section class="card" id="wordsCard"><h2>📚 Слова — 10 минут</h2>' +
       tbar(pct(Math.min(pl.done, WORDS_DAILY), WORDS_DAILY), 0, 'Слов сегодня') +
-      '<div class="muted">Сделано ' + Math.min(pl.done, WORDS_DAILY) + ' из ' + WORDS_DAILY + ' · ' + esc(body) + '</div>' +
+      '<div class="muted">Сделано ' + Math.min(pl.done, WORDS_DAILY) + ' из ' + WORDS_DAILY + ' · ' + esc(body) + '</div>' + chips +
       '<div class="row">' + (pl.count ? '<button class="primary" data-w="start">Начать (' + pl.count + ')</button>' : '') +
       '<button data-w="open">Все слова</button></div></section>';
   }
@@ -314,16 +322,25 @@
     Array.prototype.forEach.call(view.querySelectorAll('[data-w]'), function (b) {
       b.onclick = function () { b.getAttribute('data-w') === 'start' ? startWords(false) : route('words'); };
     });
+    Array.prototype.forEach.call(view.querySelectorAll('[data-wl]'), function (b) {
+      b.onclick = function () {
+        state.wordsLang = b.getAttribute('data-wl');
+        kvSet('wlang', state.wordsLang).then(function () { route(state.tab); });
+      };
+    });
   }
 
   function renderWords() {
     titleEl.textContent = 'Слова';
     var pl = wordsPlan(false), words = pl.words, states = pl.states;
-    var st = L.vocabStats(words, states, today());
+    var st = L.vocabStatsLang(words, states, today(), state.wordsLang);
+    var stTr = L.vocabStatsLang(words, states, today(), 'tr'), stEn = L.vocabStatsLang(words, states, today(), 'en');
     var html = wordsCardHtml();
     html += '<div class="grid"><section class="card"><h2>Всего слов</h2><div class="big">' + st.total + '</div></section>' +
       '<section class="card"><h2>Учу</h2><div class="big">' + st.learning + '</div><div class="muted">ещё ' + st.fresh + ' новых</div></section>' +
       '<section class="card"><h2>Выучено</h2><div class="big"><span class="good">' + st.known + '</span></div><div class="muted">ящики 4–5</div></section></div>';
+    html += '<p class="muted" style="margin:0 0 12px">Турецкие: ' + stTr.total + ' · учу ' + stTr.learning + ' · выучено ' + stTr.known +
+      ' &nbsp;|&nbsp; Английские: ' + stEn.total + ' · учу ' + stEn.learning + ' · выучено ' + stEn.known + '</p>';
     html += '<div class="row" style="margin:0 0 12px"><button class="primary" id="addWord">＋ Добавить своё слово</button>' +
       (!pl.count && words.length ? '<button id="moreWords">Ещё 10 слов</button>' : '') + '</div>';
 
@@ -642,6 +659,46 @@
     return { log: log, subjects: dyn.subjects || [] };
   }
 
+  /** Слова по неделям: суммы с сервера + ещё не отправленные ответы этого устройства; новые слова — по дню первого ответа. */
+  function dynVocabHtml() {
+    var words = allWords(), langOf = {};
+    words.forEach(function (w) { langOf[w.id] = w.l; });
+    var srv = (state.pack && state.pack.vocab && state.pack.vocab.dyn) || { days: [] };
+    var days = (srv.days || []).slice();
+    var local = {};
+    state.vq.forEach(function (ev) {
+      var l = langOf[ev.word_id];
+      if (!l) return;
+      var d = L.dayOf(ev.at), key = d + '|' + l;
+      var x = local[key] || (local[key] = { d: d, l: l, r: 0, ok: 0, lk: 0 });
+      if (ev.kind === 'lookup') x.lk++; else { x.r++; if (ev.ok) x.ok++; }
+    });
+    Object.keys(local).forEach(function (k) { days.push(local[k]); });
+    var firsts = [], states = allStates();
+    Object.keys(states).forEach(function (id) { if (states[id].f && langOf[id]) firsts.push({ d: states[id].f, l: langOf[id] }); });
+    var vm = L.weeklyVocab({ today: today(), weeks: 12, days: days, firsts: firsts });
+    if (!vm.weeks.length) return '<section class="card" id="vdyn"><h2>📚 Слова</h2><p class="muted">Карточек со словами пока не проходили.</p></section>';
+
+    var pct = function (x) { return x.r ? Math.round(x.ok * 100 / x.r) : 0; };
+    var cell = function (x) { return x.r ? x.r + ' <span class="n">(' + pct(x) + '%)</span>' : '0'; };
+    var cur = vm.weeks[vm.weeks.length - 1];
+    var line = function (name, x) {
+      return '<strong>' + name + ':</strong> ' + x.r + ' ' + plural(x.r, 'карточка', 'карточки', 'карточек') + (x.r ? ' · верно ' + pct(x) + '%' : '') +
+        ' · ' + x.fresh + ' ' + plural(x.fresh, 'новое слово', 'новых слова', 'новых слов') + ' · непонятных ' + x.lk;
+    };
+    var max = vm.weeks.reduce(function (m, w) { return Math.max(m, w.all.r); }, 0) || 1;
+    var rows = vm.weeks.slice().reverse().map(function (w) {
+      var a = w.start.split('-'), b = L.addDays(w.start, 6).split('-');
+      var bar = w.all.r ? '<span style="display:inline-block;height:8px;border-radius:4px;background:var(--accent);vertical-align:middle;margin-left:6px;width:' + Math.round(w.all.r * 60 / max) + 'px"></span>' : '';
+      return '<tr' + (w.current ? ' class="now"' : '') + '><td>' + a[2] + '.' + a[1] + ' – ' + b[2] + '.' + b[1] + (w.current ? ' · эта' : '') + '</td><td>' + cell(w.tr) + '</td><td>' + cell(w.en) +
+        '</td><td>' + w.all.fresh + '</td><td>' + w.all.lk + '</td><td style="text-align:left">' + bar + '</td></tr>';
+    }).join('');
+    return '<section class="card" id="vdyn"><h2>📚 Слова по неделям</h2>' +
+      '<p class="dynsum"><strong>Эта неделя.</strong><br>' + line('Турецкие', cur.tr) + '<br>' + line('Английские', cur.en) + '</p>' +
+      '<div class="tablewrap"><table class="dtable"><thead><tr><th>Неделя</th><th>Турецкие: карточек</th><th>Английские: карточек</th><th>Новых слов</th><th>Непонятных</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="muted">Карточка — один ответ в блоке «Слова». В скобках доля верных. Новое слово — первый ответ на слово. Непонятное — слово, открытое в задании как незнакомое.</p></section>';
+  }
+
   function renderDynamics() {
     titleEl.textContent = 'Динамика по неделям';
     if (!state.pack) {
@@ -651,7 +708,7 @@
     var d = dynamicsLog();
     var model = P.weeklyDynamics({ today: today(), weeks: 12, log: d.log, subjects: d.subjects });
     if (!model.weeks.length) {
-      view.innerHTML = '<div class="card"><h2>Ответов пока нет</h2><p class="muted">Диаграмма появится после первых ответов.</p></div>';
+      view.innerHTML = '<div class="card"><h2>Ответов пока нет</h2><p class="muted">Диаграмма появится после первых ответов.</p></div>' + dynVocabHtml();
       return;
     }
     var known = {};
@@ -680,6 +737,7 @@
         (x.all ? ' <span class="n">(' + x.pct + '%)</span>' : '') + '</td><td>' + x.rep + '</td></tr>';
     }).join('');
     html += '<section class="card"><h2>В цифрах</h2><div class="tablewrap"><table class="dtable"><thead><tr><th>Неделя</th><th>Всего</th><th>Неверно</th><th>Повторы</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+    html += dynVocabHtml();
 
     view.innerHTML = html;
     Array.prototype.forEach.call(view.querySelectorAll('[data-sub]'), function (b) {
@@ -830,6 +888,7 @@
       html += '<section class="day' + (isToday ? ' today' : '') + '"><h3>' + esc(d.short) + ' ' + esc(d.dayMonth) + (isToday ? ' · сегодня' : '') +
         (d.totalMinutes ? ' <span class="muted">' + esc(duration(d.totalMinutes)) + '</span>' : '') + '</h3>';
       if (!d.items.length) html += '<p class="muted">Занятий нет</p>';
+      var wd = d.words || { minutes: 10, label: 'Слова', note: 'Карточки в приложении, в любое время дня' };
       d.items.forEach(function (it) {
         var loc = it.kind === 'school' ? '🏫 Школа' : it.kind === 'home' ? '🏠 Дома' : it.location;
         html += '<div class="item ' + esc(it.kind) + '"><div class="t">' + esc(it.start + (it.end ? '–' + it.end : '')) + ' · ' + esc(it.label) + '</div>' +
@@ -839,9 +898,13 @@
           (it.tasksMode === 'app' ? '<div class="m">📱 Задания в приложении' + (it.autoTopic ? ' · ' + esc(it.autoTopic) : '') + '</div>' : it.tasksMode === 'book' ? '<div class="m">📖 Задания в книжке</div>' : '') +
           '</div>';
       });
+      html += '<div class="item home wordsblock"><div class="t">📚 ' + esc(wd.label) + ' · ' + esc(duration(wd.minutes)) + '</div>' +
+        '<div class="m">' + esc(wd.note) + (isToday ? ' · сегодня ' + Math.min(state.vdaily.n, WORDS_DAILY) + ' из ' + WORDS_DAILY : '') + '</div>' +
+        (isToday ? '<div class="row"><button data-gowords="1">Открыть слова</button></div>' : '') + '</div>';
       html += '</section>';
     });
     view.innerHTML = html;
+    Array.prototype.forEach.call(view.querySelectorAll('[data-gowords]'), function (b) { b.onclick = function () { route('words'); }; });
     document.getElementById('wp').onclick = function () { state.weekIdx--; renderSchedule(); };
     document.getElementById('wn').onclick = function () { state.weekIdx++; renderSchedule(); };
   }

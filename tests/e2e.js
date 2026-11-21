@@ -69,7 +69,7 @@ async function mockApi(route) {
     const tomorrow = new Date(day.getTime() + 86400000);
     pack.plan = pack.plan.concat(ids.slice(6, 9).map(id => ({ date: iso(tomorrow), topicId: tasks[0].topicId, subjectId: 'ENG', taskId: id })));
     pack.answered = {};
-    pack.vocab = { words: JSON.parse(JSON.stringify(vocabWords)), state: {} };
+    pack.vocab = { words: JSON.parse(JSON.stringify(vocabWords)), state: {}, dyn: { days: [{ d: iso(yesterday), l: 'tr', r: 10, ok: 7, lk: 1 }] } };
     pack.dyn = { subjects: [{ id: 'ENG', name: 'Английский' }, { id: 'BIO', name: 'Биология' }],
       log: [{ t: 'x1', s: 'ENG', d: iso(new Date(day.getTime() - 8 * 86400000)) }, { t: 'x2', s: 'BIO', d: iso(new Date(day.getTime() - 9 * 86400000)) }, { t: 'x3', s: 'BIO', d: iso(new Date(day.getTime() - 15 * 86400000)) }] };
     pack.home = { exam: { name: 'YKS 2027', date: '2027-06-19' }, topics: { done: 1, total: 4, percent: 25 }, tasks: {},
@@ -122,6 +122,7 @@ async function mockApi(route) {
   assert.ok((await text('#status')).includes('Нет сети'));
   await page.click('#nav [data-tab=schedule]');
   const sched = await text('#view');
+  assert.ok(sched.includes('📚 Слова · 10 мин') && sched.includes('в любое время дня'), 'в расписании есть блок «Слова»');
   assert.ok(sched.includes('16:00–17:00 · Английский') && sched.includes('📱 Задания в приложении') && sched.includes('📖 Задания в книжке'), 'расписание офлайн');
   await page.click('#nav [data-tab=today]');
   assert.ok((await text('#view')).includes('Сделано 0 из 3'));
@@ -223,6 +224,14 @@ async function mockApi(route) {
   await page.click('#nav [data-tab=words]');
   let wv = await text('#view');
   assert.ok(wv.includes('Всего слов') && wv.includes('Начать ('), 'вкладка «Слова»: сводка и кнопка начала: ' + wv.slice(0, 200));
+  // язык блока: только английские — одно слово; «вперемешку» — все
+  await page.click('[data-wl=en]');
+  await page.waitForSelector('[data-wl=en][aria-pressed=true]');
+  assert.ok((await text('#view')).includes('Начать (1)'), 'английские: одна карточка');
+  assert.ok(await page.locator('[data-wl=en][aria-pressed=true]').count() === 1);
+  await page.click('[data-wl=""]');
+  await page.waitForSelector('[data-wl=""][aria-pressed=true]');
+  assert.ok(!(await text('#view')).includes('Начать (1)'), 'вперемешку: все слова');
   netDown = true; await context.setOffline(true);
   await page.click('button[data-w=start]');
   let answered = 0;
@@ -270,6 +279,13 @@ async function mockApi(route) {
   await page.waitForTimeout(800);
   assert.strictEqual(vocabEvents.length, evCount, 'повторная синхронизация без дублей');
   ok('слова: ' + evCount + ' событий и своё слово дошли до сервера без дублей');
+
+  // Динамика: слова по неделям, турецкие и английские отдельно
+  await page.click('#nav [data-tab=dynamics]');
+  const dv = await text('#view');
+  assert.ok(dv.includes('Слова по неделям') && dv.includes('Турецкие:') && dv.includes('Английские:'), 'динамика: блок слов');
+  assert.ok(dv.includes('Эта неделя.') && /Турецкие:\s*\d+ карточ/.test(dv), 'динамика: сводка недели');
+  ok('динамика по неделям: блок «Слова» (турецкие и английские отдельно)');
 
   // «Слова в задании»: открытие — событие lookup
   await page.click('#nav [data-tab=practice]');

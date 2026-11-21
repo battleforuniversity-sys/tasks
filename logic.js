@@ -223,6 +223,55 @@
     return s;
   }
 
+  /** Понедельник недели для даты «yyyy-MM-dd». */
+  function weekStartOf(day) {
+    var p = day.split('-').map(Number);
+    var dow = (new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay() + 6) % 7;
+    return addDays(day, -dow);
+  }
+
+  /**
+   * Слова по неделям, отдельно турецкие (tr) и английские (en). ДОЛЖНА совпадать с weeklyVocabDynamics_ в Vocab.gs.
+   * input: { today, weeks, days:[{d,l,r,ok,lk}], firsts:[{d,l}] } → { weeks:[{start,current,tr,en,all:{r,ok,fresh,lk}}] }
+   */
+  function weeklyVocab(input) {
+    var n = input.weeks || 12, thisWeek = weekStartOf(input.today);
+    var valid = function (x) { return x && x.d && (x.l === 'tr' || x.l === 'en'); };
+    var minWeek = null;
+    (input.days || []).concat(input.firsts || []).forEach(function (x) {
+      if (!valid(x)) return;
+      var w = weekStartOf(x.d);
+      if (w <= thisWeek && (minWeek === null || w < minWeek)) minWeek = w;
+    });
+    if (minWeek === null) return { weeks: [] };
+    var from = addDays(thisWeek, -7 * (n - 1));
+    if (minWeek > from) from = minWeek;
+    var mk = function () { return { r: 0, ok: 0, fresh: 0, lk: 0 }; };
+    var weeks = [], index = {};
+    for (var w = from; w <= thisWeek; w = addDays(w, 7)) {
+      index[w] = weeks.length;
+      weeks.push({ start: w, current: w === thisWeek, tr: mk(), en: mk(), all: mk() });
+    }
+    (input.days || []).forEach(function (x) {
+      if (!valid(x)) return;
+      var wk = index[weekStartOf(x.d)];
+      if (wk === undefined) return;
+      [weeks[wk][x.l], weeks[wk].all].forEach(function (t) { t.r += x.r || 0; t.ok += x.ok || 0; t.lk += x.lk || 0; });
+    });
+    (input.firsts || []).forEach(function (x) {
+      if (!valid(x)) return;
+      var wk = index[weekStartOf(x.d)];
+      if (wk === undefined) return;
+      weeks[wk][x.l].fresh++; weeks[wk].all.fresh++;
+    });
+    return { weeks: weeks };
+  }
+
+  /** Состояние + слова → сводка по языку (lang: '' — все): {total, fresh, learning, known, due}. */
+  function vocabStatsLang(words, states, today, lang) {
+    return vocabStats((words || []).filter(function (w) { return !lang || w.l === lang; }), states, today);
+  }
+
   function wordsForTask(words, taskId) {
     return words.filter(function (w) { return w.task === taskId; });
   }
@@ -231,7 +280,7 @@
     topicStats: topicStats, pickTasks: pickTasks, makeAttemptId: makeAttemptId, idsToRemove: idsToRemove,
     srsApply: srsApply, newerState: newerState, poolWords: poolWords, translations: translations, answerSide: answerSide, pickSession: pickSession,
     makeCard: makeCard, pickDir: pickDir, shuffle: shuffle, validateNewWord: validateNewWord, vocabStats: vocabStats, wordsForTask: wordsForTask,
-    dayOf: dayOf, addDays: addDays };
+    dayOf: dayOf, addDays: addDays, weeklyVocab: weeklyVocab, weekStartOf: weekStartOf, vocabStatsLang: vocabStatsLang };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Logic = api;
