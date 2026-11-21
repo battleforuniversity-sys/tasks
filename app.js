@@ -153,7 +153,7 @@
   function renderStatus() {
     var online = navigator.onLine;
     var html = '<span class="pill ' + (online ? 'ok' : 'warn') + '">' + (online ? 'Есть сеть' : 'Нет сети') + '</span>';
-    html += '<span class="pill">v18</span>';
+    html += '<span class="pill">v19</span>';
     html += '<span class="pill ' + (state.queued + state.vq.length + state.vnew.length ? 'warn' : '') + '">Не отправлено: ' + (state.queued + state.vq.length + state.vnew.length) + '</span>';
     if (state.syncError) html += '<span class="pill warn" role="alert">' + esc(state.syncError) + '</span>';
     else if (state.lastSync) html += '<span class="pill">Синхронизировано в ' + esc(clock(state.lastSync)) + '</span>';
@@ -331,6 +331,7 @@
   }
 
   /** Плашка «📖 Задания в книжке» выключена на сервере (SHOW_BOOK_BADGE); код сохранён. */
+  function showApp() { return !!(state.pack && state.pack.flags && state.pack.flags.showApp); }
   function showBook() { return !!(state.pack && state.pack.flags && state.pack.flags.showBook); }
 
   function wordsDashButton() {
@@ -695,7 +696,7 @@
           '<div class="muted">' + (s.current ? 'Тема: ' + esc(s.current.name) : s.state === 'empty' ? 'Программа не загружена' : s.state === 'finished' ? 'Программа пройдена' : 'Тема не назначена') + '</div>';
         if (s.state !== 'empty') html += tbar(s.percent, 0, 'Пройдено тем: ' + s.name) + '<div class="muted">Темы: ' + s.done + ' из ' + s.total + '</div>';
         if (s.tasks.mode === 'app') {
-          html += '<div class="muted" style="margin-top:8px">📱 Задания в приложении</div>';
+          if (showApp()) html += '<div class="muted" style="margin-top:8px">📱 Задания в приложении</div>';
           if (sub.total) html += tbar(pct(sub.answered, sub.total), pct(sub.debt, sub.total), 'Задания: решено и долг: ' + s.name) +
             '<div class="muted">Решено ' + sub.answered + ' из ' + sub.total + ' · верно ' + pct(sub.correct, sub.answered) + '%' +
             (sub.debt ? ' · <span class="debt">долг ' + sub.debt + '</span>' : '') + '</div>';
@@ -968,7 +969,7 @@
           '<div class="m">' + esc([loc, it.duration ? duration(it.duration) : ''].filter(Boolean).join(' · ')) + '</div>' +
           (it.activity ? '<div class="m">' + esc(it.activity) + '</div>' : '') +
           (it.topic ? '<div class="m">📖 ' + esc(it.topic.name) + '</div>' : '') +
-          (it.tasksMode === 'app' ? '<div class="m">📱 Задания в приложении' + (it.autoTopic ? ' · ' + esc(it.autoTopic) : '') + '</div>' : it.tasksMode === 'book' && showBook() ? '<div class="m">📖 Задания в книжке</div>' : '') +
+          (it.tasksMode === 'app' ? (showApp() ? '<div class="m">📱 Задания в приложении' + (it.autoTopic ? ' · ' + esc(it.autoTopic) : '') + '</div>' : '') : it.tasksMode === 'book' && showBook() ? '<div class="m">📖 Задания в книжке</div>' : '') +
           '</div>';
       });
       html += '<div class="item home wordsblock"><div class="t">📚 ' + esc(wd.label) + ' · ' + esc(duration(wd.minutes)) + '</div>' +

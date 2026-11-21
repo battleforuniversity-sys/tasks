@@ -69,7 +69,7 @@ async function mockApi(route) {
     const tomorrow = new Date(day.getTime() + 86400000);
     pack.plan = pack.plan.concat(ids.slice(6, 9).map(id => ({ date: iso(tomorrow), topicId: tasks[0].topicId, subjectId: 'ENG', taskId: id })));
     pack.answered = {};
-    pack.flags = { showBook: false };
+    pack.flags = { showBook: false, showApp: false };
     pack.vocab = { words: JSON.parse(JSON.stringify(vocabWords)), state: {}, dyn: { days: [{ d: iso(new Date(day.getTime() - 3 * 86400000)), l: 'tr', r: 10, ok: 7, lk: 1 }] } };
     pack.dyn = { subjects: [{ id: 'ENG', name: 'Английский' }, { id: 'BIO', name: 'Биология' }],
       log: [{ t: 'x1', s: 'ENG', d: iso(new Date(day.getTime() - 8 * 86400000)) }, { t: 'x2', s: 'BIO', d: iso(new Date(day.getTime() - 9 * 86400000)) }, { t: 'x3', s: 'BIO', d: iso(new Date(day.getTime() - 15 * 86400000)) }] };
@@ -107,7 +107,7 @@ async function mockApi(route) {
   assert.ok(dash.includes('Слова: не делали 2 дня подряд'), 'дашборд: слова не делали 2 дня — красным: ' + dash.slice(0, 250));
   assert.ok(await page.locator('.links button.red:has-text("📚 Слова")').count() === 1, 'кнопка слов красная');
   assert.ok(dash.includes('Нужно выполнить') && /Нужно выполнить[\s\S]*слова: не делали 2 дня подряд/.test(dash), 'на кнопке долга: слова — пропущенные дни');
-  assert.ok(dash.includes('📱 Задания в приложении') && !dash.includes('📖 Задания в книжке'), 'значки по предметам: «в книжке» выключена');
+  assert.ok(!dash.includes('📱 Задания в приложении') && !dash.includes('📖 Задания в книжке'), 'значки по предметам: «в книжке» выключена');
   assert.ok((await text('#nav')).includes('Долг'));
   await page.click('#nav [data-tab=upcoming]');
   const up = await text('#view');
@@ -128,7 +128,7 @@ async function mockApi(route) {
   await page.click('#nav [data-tab=schedule]');
   const sched = await text('#view');
   assert.ok(sched.includes('📚 Слова · 10 мин') && sched.includes('в любое время дня'), 'в расписании есть блок «Слова»');
-  assert.ok(sched.includes('16:00–17:00 · Английский') && sched.includes('📱 Задания в приложении') && !sched.includes('📖 Задания в книжке'), 'расписание офлайн: плашка «в книжке» выключена');
+  assert.ok(sched.includes('16:00–17:00 · Английский') && !sched.includes('📱 Задания в приложении') && !sched.includes('📖 Задания в книжке'), 'расписание офлайн: плашка «в книжке» выключена');
   await page.click('#nav [data-tab=today]');
   assert.ok((await text('#view')).includes('Сделано 0 из 3'));
   await page.click('#nav [data-tab=practice]');
