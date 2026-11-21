@@ -153,7 +153,7 @@
   function renderStatus() {
     var online = navigator.onLine;
     var html = '<span class="pill ' + (online ? 'ok' : 'warn') + '">' + (online ? 'Есть сеть' : 'Нет сети') + '</span>';
-    html += '<span class="pill">v14</span>';
+    html += '<span class="pill">v15</span>';
     html += '<span class="pill ' + (state.queued + state.vq.length + state.vnew.length ? 'warn' : '') + '">Не отправлено: ' + (state.queued + state.vq.length + state.vnew.length) + '</span>';
     if (state.syncError) html += '<span class="pill warn" role="alert">' + esc(state.syncError) + '</span>';
     else if (state.lastSync) html += '<span class="pill">Синхронизировано в ' + esc(clock(state.lastSync)) + '</span>';
@@ -303,6 +303,21 @@
     return { words: words, pool: pool, states: states, session: s, count: s.due.length + s.fresh.length, done: done };
   }
 
+  /** Слова — обязательная часть дня: нужны, если в словаре есть что учить; сделаны, когда пройдено 20 карточек или не осталось слов на сегодня. */
+  function wordsDay() {
+    var pl = wordsPlan(false);
+    var required = pl.pool.length > 0;
+    var done = required && (pl.done >= WORDS_DAILY || !!state.vdaily.fin || (pl.done > 0 && pl.count === 0));
+    return { required: required, done: done, n: Math.min(pl.done, WORDS_DAILY), left: pl.count };
+  }
+
+  function wordsDashButton() {
+    var wd = wordsDay();
+    if (!wd.required) return '';
+    return '<button data-go="words"' + (wd.done ? '' : ' class="primary"') + '>📚 Слова на сегодня<br><small>' +
+      (wd.done ? '✓ сделано (' + wd.n + ' карточек)' : wd.n + ' из ' + WORDS_DAILY + ' · осталось ' + wd.left) + '</small></button>';
+  }
+
   function wordsCardHtml() {
     var pl = wordsPlan(false);
     var langNames = { '': 'Вперемешку', tr: 'Турецкие', en: 'English' };
@@ -312,7 +327,8 @@
     var body = pl.pool.length
       ? (pl.count ? 'Повторить: ' + pl.session.due.length + ' · новых: ' + pl.session.fresh.length : '✓ На сегодня всё')
       : 'Слов пока нет — добавьте своё или дождитесь слов из заданий';
-    return '<section class="card" id="wordsCard"><h2>📚 Слова — 10 минут</h2>' +
+    var wd = wordsDay();
+    return '<section class="card" id="wordsCard"><h2>' + (wd.done ? '✓ Слова на сегодня сделаны' : '📚 Слова — обязательно каждый день, 10 минут') + '</h2>' +
       tbar(pct(Math.min(pl.done, WORDS_DAILY), WORDS_DAILY), 0, 'Слов сегодня') +
       '<div class="muted">Сделано ' + Math.min(pl.done, WORDS_DAILY) + ' из ' + WORDS_DAILY + ' · ' + esc(body) + '</div>' + chips +
       '<div class="row">' + (pl.count ? '<button class="primary" data-w="start">Начать (' + pl.count + ')</button>' : '') +
@@ -441,7 +457,7 @@
     state.vstate[ev.word_id] = next;                 // сразу, чтобы экраны показали новое состояние
     var jobs = [vqPut(ev), vstatePut(next)];
     if (ev.kind === 'review') {
-      state.vdaily = { date: today(), n: (state.vdaily.date === today() ? state.vdaily.n : 0) + 1 };
+      state.vdaily = { date: today(), n: (state.vdaily.date === today() ? state.vdaily.n : 0) + 1, fin: state.vdaily.date === today() && !!state.vdaily.fin };
       jobs.push(kvSet('vdaily', state.vdaily));
     }
     return Promise.all(jobs).then(refreshCounters).then(function () {
@@ -522,6 +538,9 @@
       '<p class="muted">Ошибочные слова вернутся завтра и в ближайшие дни, выученные — через несколько дней.</p>' +
       '<div class="row"><button class="primary" id="home">Готово</button></div></div>';
     state.session = null;
+    if (!s.extra && state.vdaily.date === today() && !state.vdaily.fin) {       // дневной блок пройден до конца — слова на сегодня сделаны
+      state.vdaily.fin = true; kvSet('vdaily', state.vdaily);
+    }
     document.getElementById('home').onclick = function () { route('words'); };
   }
 
@@ -553,7 +572,10 @@
     var st = state.pack && state.pack.plan ? liveStats() : null;
     document.getElementById('nav').innerHTML = TABS.map(function (t) {
       var n = '';
-      if (st && t[0] === 'today' && st.all.today) n = '<span class="n">' + st.all.todayDone + '/' + st.all.today + '</span>';
+      if (t[0] === 'today') {
+        var wdn = wordsDay(), tt = st ? st.all.today : 0, td = st ? st.all.todayDone : 0;
+        if (tt + (wdn.required ? 1 : 0)) n = '<span class="n">' + (td + (wdn.done ? 1 : 0)) + '/' + (tt + (wdn.required ? 1 : 0)) + '</span>';
+      }
       if (st && t[0] === 'debt' && st.all.debt) n = '<span class="n red">' + st.all.debt + '</span>';
       if (t[0] === 'words') { var wc = wordsPlan(false).count; if (wc) n = '<span class="n">' + wc + '</span>'; }
       return '<button data-tab="' + t[0] + '"' + (state.tab === t[0] ? ' aria-current="page"' : '') + '>' + t[1] + n + '</button>';
@@ -595,11 +617,12 @@
       html += '<div class="links">' +
         '<button data-go="schedule">🗓 Расписание</button>' +
         '<button data-go="today" class="primary">📱 Задания на сегодня<br><small>' + st.all.todayDone + ' из ' + st.all.today + '</small></button>' +
+        wordsDashButton() +
         '<button data-go="debt"' + (st.all.debt ? ' class="red"' : '') + '>⏳ Нужно выполнить<br><small>' +
         (st.all.debt ? st.all.debt + ' ' + plural(st.all.debt, 'задание', 'задания', 'заданий') : 'долга нет') + '</small></button>' +
         '<button data-go="upcoming">📅 Ближайшие<br><small>' + up + ' ' + plural(up, 'задание', 'задания', 'заданий') + '</small></button></div>';
     } else {
-      html += '<div class="links"><button data-go="schedule">🗓 Расписание</button><button data-go="practice">📱 Тренировка</button></div>';
+      html += '<div class="links"><button data-go="schedule">🗓 Расписание</button><button data-go="practice">📱 Тренировка</button>' + wordsDashButton() + '</div>';
     }
 
     if (home) {
@@ -637,7 +660,6 @@
     if (state.pack.generatedAt) html += '<p class="muted">Данные от ' + esc(clock(state.pack.generatedAt)) + '. Задания и долг считаются на этом устройстве сразу.</p>';
     view.innerHTML = html;
     var linkBox = view.querySelector('.links');
-    if (linkBox) { var wc = wordsPlan(false).count; linkBox.insertAdjacentHTML('beforeend', '<button data-go="words">📚 Слова<br><small>' + (wc ? 'на сегодня ' + wc : 'всё сделано') + '</small></button>'); }
     Array.prototype.forEach.call(view.querySelectorAll('[data-go]'), function (b) { b.onclick = function () { route(b.getAttribute('data-go')); }; });
   }
 

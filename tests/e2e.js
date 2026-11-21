@@ -248,6 +248,13 @@ async function mockApi(route) {
   await page.click('#home');
   assert.strictEqual(vocabEvents.length, 0, 'без сети события слов не уходят');
   ok('слова: ' + answered + ' карточек пройдено без сети');
+  // слова — обязательная часть дня: видны на дашборде, отмечаются сделанными, учитываются в счётчике «Сегодня»
+  await page.click('#nav [data-tab=home]');
+  const hv = await text('#view');
+  assert.ok(hv.includes('📚 Слова на сегодня') && hv.includes('✓ сделано'), 'дашборд: слова сделаны: ' + hv.slice(0, 200));
+  assert.ok((await text('#nav')).includes('4/4'), 'счётчик «Сегодня»: 3 задания + слова = 4/4: ' + (await text('#nav')));
+  ok('слова на дашборде и в счётчике дня как обязательная часть');
+  await page.click('#nav [data-tab=words]');
 
   // своё слово: ошибка сохраняет ввод, дубль отклоняется, корректное — в очередь
   await page.click('#addWord');
