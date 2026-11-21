@@ -104,11 +104,13 @@ async function mockApi(route) {
   assert.ok(dash.includes('Задания на сегодня') && dash.includes('0 из 3'), 'дашборд: сегодня 0 из 3');
   assert.ok(dash.includes('долг 3') || dash.includes('3 задания'), 'дашборд: долг 3');
   assert.ok(dash.includes('Слова: не делали 2 дня подряд'), 'дашборд: слова не делали 2 дня — красным: ' + dash.slice(0, 250));
-  assert.ok(await page.locator('.links button.red:has-text("Слова")').count() === 1, 'кнопка слов красная');
+  assert.ok(await page.locator('.links button.red:has-text("📚 Слова")').count() === 1, 'кнопка слов красная');
+  assert.ok(dash.includes('Нужно выполнить') && /Нужно выполнить[\s\S]*слова: не делали 2 дня подряд/.test(dash), 'на кнопке долга: слова — пропущенные дни');
   assert.ok(dash.includes('📱 Задания в приложении') && dash.includes('📖 Задания в книжке'), 'значки по предметам');
   assert.ok((await text('#nav')).includes('Долг'));
   await page.click('#nav [data-tab=upcoming]');
   const up = await text('#view');
+  assert.ok(up.includes('📚 Слова — каждый день'), 'ближайшие: блок слов');
   assert.ok(up.includes('Завтра') && up.includes('3 задания') && up.includes('Решить заранее (3)'), 'ближайшие: завтра 3 задания');
   assert.ok(up.includes('В свободное время') && up.includes('Осталось 15 заданий') && up.includes('Решить 10'), 'свободное время: 24 − 9 выданных = 15');
   await page.click('#nav [data-tab=practice]');
@@ -161,6 +163,7 @@ async function mockApi(route) {
   assert.ok((await text('#view')).includes('Сделано 3 из 3'), 'сегодня 3 из 3');
   await page.click('#nav [data-tab=debt]');
   assert.ok((await text('#view')).includes('Долга нет'), 'долг закрыт решением');
+  assert.ok((await text('#view')).includes('Слова: не делали 2 дня подряд'), 'экран долга: слова красным');
   await page.click('#nav [data-tab=practice]');
   assert.strictEqual(attemptsSheet.length, 0, 'без сети на сервер ничего не должно уйти');
 

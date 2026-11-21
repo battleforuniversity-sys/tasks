@@ -153,7 +153,7 @@
   function renderStatus() {
     var online = navigator.onLine;
     var html = '<span class="pill ' + (online ? 'ok' : 'warn') + '">' + (online ? 'Есть сеть' : 'Нет сети') + '</span>';
-    html += '<span class="pill">v16</span>';
+    html += '<span class="pill">v17</span>';
     html += '<span class="pill ' + (state.queued + state.vq.length + state.vnew.length ? 'warn' : '') + '">Не отправлено: ' + (state.queued + state.vq.length + state.vnew.length) + '</span>';
     if (state.syncError) html += '<span class="pill warn" role="alert">' + esc(state.syncError) + '</span>';
     else if (state.lastSync) html += '<span class="pill">Синхронизировано в ' + esc(clock(state.lastSync)) + '</span>';
@@ -323,6 +323,12 @@
   }
 
   function missedText(n) { return 'не делали ' + n + ' ' + plural(n, 'день', 'дня', 'дней') + ' подряд'; }
+
+  /** Красная пометка «слова не делали N дней подряд» — для экрана долга и кнопки долга; '' если пропусков нет или слова уже сделаны. */
+  function wordsDebtNote() {
+    var wd = wordsDay(), m = wordsMissed();
+    return wd.required && !wd.done && m >= 1 ? 'слова: ' + missedText(m).replace('не делали', 'не делали') : '';
+  }
 
   function wordsDashButton() {
     var wd = wordsDay();
@@ -594,7 +600,10 @@
         var wdn = wordsDay(), tt = st ? st.all.today : 0, td = st ? st.all.todayDone : 0;
         if (tt + (wdn.required ? 1 : 0)) n = '<span class="n">' + (td + (wdn.done ? 1 : 0)) + '/' + (tt + (wdn.required ? 1 : 0)) + '</span>';
       }
-      if (st && t[0] === 'debt' && st.all.debt) n = '<span class="n red">' + st.all.debt + '</span>';
+      if (t[0] === 'debt') {
+        var dd = st ? st.all.debt : 0, dw = wordsDebtNote();
+        if (dd || dw) n = '<span class="n red">' + (dd ? dd : '') + (dw ? (dd ? ' + ' : '') + '📚' : '') + '</span>';
+      }
       if (t[0] === 'words') {
         var wc = wordsPlan(false).count, wm = wordsMissed();
         if (wm >= 1 && !wordsDay().done) n = '<span class="n red">' + wm + ' дн.</span>'; else if (wc) n = '<span class="n">' + wc + '</span>';
@@ -612,8 +621,23 @@
     renderNav();
     if (tab === 'words') return renderWords();
     if (tab === 'today') { renderAssigned('today'); view.insertAdjacentHTML('afterbegin', wordsCardHtml()); bindWordsCard(); return; }
-    if (tab === 'debt') return renderAssigned('debt');
-    if (tab === 'upcoming') return renderUpcoming();
+    if (tab === 'debt') {
+      renderAssigned('debt');
+      var dn = wordsDebtNote();
+      if (dn) {
+        view.insertAdjacentHTML('afterbegin', '<section class="card"><h2 class="debt">📚 Слова</h2><p class="debt">' + esc(dn.charAt(0).toUpperCase() + dn.slice(1)) + '</p>' +
+          '<p class="muted">Пропущенные дни не копятся: слова возвращаются на повторение. Нужно пройти блок на сегодня.</p><div class="row"><button class="primary" data-gw="1">Открыть слова</button></div></section>');
+        var gb = view.querySelector('[data-gw]'); if (gb) gb.onclick = function () { route('words'); };
+      }
+      return;
+    }
+    if (tab === 'upcoming') {
+      renderUpcoming();
+      if (wordsDay().required) {
+        view.insertAdjacentHTML('afterbegin', '<section class="card"><h2>📚 Слова — каждый день</h2><p class="muted">10 минут карточек, в любое время дня. Это обязательная часть каждого дня.</p></section>');
+      }
+      return;
+    }
     if (tab === 'schedule') return renderSchedule();
     if (tab === 'dynamics') return renderDynamics();
     if (tab === 'practice') return renderPractice();
@@ -639,8 +663,9 @@
         '<button data-go="schedule">🗓 Расписание</button>' +
         '<button data-go="today" class="primary">📱 Задания на сегодня<br><small>' + st.all.todayDone + ' из ' + st.all.today + '</small></button>' +
         wordsDashButton() +
-        '<button data-go="debt"' + (st.all.debt ? ' class="red"' : '') + '>⏳ Нужно выполнить<br><small>' +
-        (st.all.debt ? st.all.debt + ' ' + plural(st.all.debt, 'задание', 'задания', 'заданий') : 'долга нет') + '</small></button>' +
+        '<button data-go="debt"' + (st.all.debt || wordsDebtNote() ? ' class="red"' : '') + '>⏳ Нужно выполнить<br><small>' +
+        ((st.all.debt ? st.all.debt + ' ' + plural(st.all.debt, 'задание', 'задания', 'заданий') : (wordsDebtNote() ? '' : 'долга нет')) +
+          (wordsDebtNote() ? (st.all.debt ? ' · ' : '') + esc(wordsDebtNote()) : '')) + '</small></button>' +
         '<button data-go="upcoming">📅 Ближайшие<br><small>' + up + ' ' + plural(up, 'задание', 'задания', 'заданий') + '</small></button></div>';
     } else {
       html += '<div class="links"><button data-go="schedule">🗓 Расписание</button><button data-go="practice">📱 Тренировка</button>' + wordsDashButton() + '</div>';
