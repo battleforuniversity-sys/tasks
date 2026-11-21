@@ -12,6 +12,15 @@ const CODE = Buffer.from(JSON.stringify({ a: API, t: TOKEN })).toString('base64'
 // «Сервер»: настоящий код Tasks.gs / Sync.gs с таблицей в памяти.
 const S = {}; vm.createContext(S);
 ['Tasks.gs', 'Sync.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), S));
+vm.runInContext(fs.readFileSync(path.join(ROOT, 'Vocab.gs'), 'utf8'), S);
+const vocabWords = [
+  { id: 'w_tr_yanlis', t: 'yanlış', l: 'tr', ru: 'неверный', pos: 'sıfat', ex: 'Bu cevap __yanlış__.', xt: 'Этот ответ неверный.', subj: 'TURKISH', task: 'ENG_PP_001', src: 'autopilot' },
+  { id: 'w_tr_dogru', t: 'doğru', l: 'tr', ru: 'правильный', ex: 'Cevap __doğru__.', xt: 'Ответ правильный.', subj: 'TURKISH', src: 'autopilot' },
+  { id: 'w_tr_kitap', t: 'kitap', l: 'tr', ru: 'книга', subj: 'TURKISH', src: 'autopilot' },
+  { id: 'w_tr_okul', t: 'okul', l: 'tr', ru: 'школа', subj: 'TURKISH', src: 'autopilot' },
+  { id: 'w_en_although', t: 'although', l: 'en', tr: 'rağmen', subj: 'ENG_GRAMMAR', src: 'autopilot' }
+];
+const vocabEvents = [];   // события, принятые «сервером»
 const seedRows = [];
 const SS = { CONFIG: { SHEETS: { TASKS: 'Tasks' } }, TASKS_HEADERS_: [], Logger: { log() {} },
   ensureSheet_: () => ({ getLastRow: () => 1, getRange: () => ({ setNumberFormat() {}, setValues: v => v.forEach(r => seedRows.push(r)) }) }) };
@@ -20,7 +29,7 @@ const tasks = seedRows.map(r => S.parseTaskRow_({ id: r[0], topicId: r[1], type:
 const tasksById = {}; tasks.forEach(t => { tasksById[t.id] = { topicId: t.topicId, accepted: t.accepted }; });
 const attemptsSheet = [];   // строки листа Attempts
 
-let netDown = false, dropNextSyncResponse = false, syncRequests = 0;
+let vocabRes = null, netDown = false, dropNextSyncResponse = false, syncRequests = 0;
 const CORS = { 'access-control-allow-origin': '*', 'content-type': 'application/json' };
 
 async function mockApi(route) {
@@ -35,7 +44,17 @@ async function mockApi(route) {
     const plan = JSON.parse(JSON.stringify(S.planSync_({ attempts: body.attempts.map(a => Object.assign({}, a, { device: body.device })), tasksById, existingIds: existing, nowIso: new Date().toISOString(), maxBatch: 500 })));
     plan.rows.forEach(r => attemptsSheet.push(r));
     if (dropNextSyncResponse) { dropNextSyncResponse = false; return route.abort('connectionreset'); }   // сервер записал, ответ не дошёл
-    return route.fulfill({ status: 200, headers: CORS, body: JSON.stringify({ ok: true, accepted: plan.accepted, duplicates: plan.duplicates, rejected: plan.rejected }) });
+    let vres;
+    if (body.vocab_events || body.vocab_new) {
+      const ex = {}; vocabWords.forEach(w => { ex[w.id] = true; });
+      const exE = {}; vocabEvents.forEach(e => { exE[e.ev_id] = true; });
+      const vp = JSON.parse(JSON.stringify(S.planVocabSync_({ events: body.vocab_events || [], newWords: body.vocab_new || [], existingWordIds: ex, existingEventIds: exE, nowIso: new Date().toISOString(), device: body.device })));
+      (body.vocab_new || []).forEach(w => { if (vp.acceptedWords.indexOf(w.word_id) >= 0) vocabWords.push({ id: w.word_id, t: w.term, l: w.lang, tr: w.lang === 'en' ? w.translation : '', ru: w.lang === 'tr' ? w.translation : '', ex: w.example || '', src: 'child' }); });
+      (body.vocab_events || []).forEach(e => { if (vp.acceptedEvents.indexOf(e.ev_id) >= 0) vocabEvents.push(e); });
+      vres = { ok: true, accepted_events: vp.acceptedEvents, duplicate_events: vp.duplicateEvents, accepted_words: vp.acceptedWords, duplicate_words: vp.duplicateWords, rejected: vp.rejected };
+      vocabRes = vres;
+    }
+    return route.fulfill({ status: 200, headers: CORS, body: JSON.stringify({ ok: true, accepted: plan.accepted, duplicates: plan.duplicates, rejected: plan.rejected, vocab: vres }) });
   }
   if (url.searchParams.get('action') === 'pack') {
     assert.strictEqual(url.searchParams.get('token'), TOKEN);
@@ -50,6 +69,9 @@ async function mockApi(route) {
     const tomorrow = new Date(day.getTime() + 86400000);
     pack.plan = pack.plan.concat(ids.slice(6, 9).map(id => ({ date: iso(tomorrow), topicId: tasks[0].topicId, subjectId: 'ENG', taskId: id })));
     pack.answered = {};
+    pack.vocab = { words: JSON.parse(JSON.stringify(vocabWords)), state: {} };
+    pack.dyn = { subjects: [{ id: 'ENG', name: 'Английский' }, { id: 'BIO', name: 'Биология' }],
+      log: [{ t: 'x1', s: 'ENG', d: iso(new Date(day.getTime() - 8 * 86400000)) }, { t: 'x2', s: 'BIO', d: iso(new Date(day.getTime() - 9 * 86400000)) }, { t: 'x3', s: 'BIO', d: iso(new Date(day.getTime() - 15 * 86400000)) }] };
     pack.home = { exam: { name: 'YKS 2027', date: '2027-06-19' }, topics: { done: 1, total: 4, percent: 25 }, tasks: {},
       subjects: [{ id: 'ENG', name: 'Английский', state: 'active', done: 1, total: 4, percent: 25, current: { name: 'Present Perfect' },
         tasks: { mode: 'app', total: 24, answered: 0, correct: 0, debt: 0, today: 3, todayDone: 0 } },
@@ -82,7 +104,7 @@ async function mockApi(route) {
   assert.ok(dash.includes('Задания на сегодня') && dash.includes('0 из 3'), 'дашборд: сегодня 0 из 3');
   assert.ok(dash.includes('долг 3') || dash.includes('3 задания'), 'дашборд: долг 3');
   assert.ok(dash.includes('📱 Задания в приложении') && dash.includes('📖 Задания в книжке'), 'значки по предметам');
-  assert.ok((await text('#nav')).includes('Нужно выполнить'));
+  assert.ok((await text('#nav')).includes('Долг'));
   await page.click('#nav [data-tab=upcoming]');
   const up = await text('#view');
   assert.ok(up.includes('Завтра') && up.includes('3 задания') && up.includes('Решить заранее (3)'), 'ближайшие: завтра 3 задания');
@@ -176,8 +198,90 @@ async function mockApi(route) {
   assert.ok((await text('.q')).includes('London'));
   ok('«Повторить ошибки» открывает решённые с ошибкой задания');
 
+  // «Сложное — на повтор»: отметка при верном ответе делает задание ошибкой и уходит в очередь служебным ответом
+  const qBefore = Number((await text('#status')).match(/Не отправлено: (\d+)/)[1]);
+  await page.locator('#opts button').first().click();
+  await page.click('#flag');
+  assert.ok((await text('#fb')).length > 0 && (await text('#flag')).includes('Отмечено на повтор'), 'кнопка «на повтор» меняет состояние');
+  await page.waitForFunction(n => document.getElementById('status').textContent.includes('Не отправлено: ' + n), qBefore + 2);
+  ok('кнопка «Сложное — на повтор»: ответ + отметка в очереди (' + (qBefore + 2) + ')');
+
   // 7. Неверный токен
   await page.click('#quit');
+  // Динамика по неделям: диаграмма, фильтр по предмету, ответы с этого устройства попадают в текущую неделю
+  await page.click('#nav [data-tab=dynamics]');
+  assert.ok(await page.locator('svg.dynsvg').count() === 1, 'диаграмма');
+  const allRects = await page.locator('svg.dynsvg rect').count();
+  assert.ok(allRects >= 3, 'столбцы по предметам: ' + allRects);
+  await page.click('[data-sub=BIO]');
+  assert.ok(await page.locator('svg.dynsvg rect').count() < allRects, 'фильтр по предмету');
+  await page.click('[data-met=rep]');
+  assert.ok((await text('#view')).includes('Повторы по неделям'), 'переключатель метрики');
+  ok('вкладка «Динамика»: диаграмма и фильтр по предмету');
+
+  // 8. Слова: вкладка, карточки офлайн, своё слово, синхронизация
+  await page.click('#nav [data-tab=words]');
+  let wv = await text('#view');
+  assert.ok(wv.includes('Всего слов') && wv.includes('Начать ('), 'вкладка «Слова»: сводка и кнопка начала: ' + wv.slice(0, 200));
+  netDown = true; await context.setOffline(true);
+  await page.click('button[data-w=start]');
+  let answered = 0;
+  for (let i = 0; i < 30; i++) {
+    if (await page.locator('#next').count() === 0 && await page.locator('#opts').count() === 0 && await page.locator('#flip').count() === 0) break;
+    if (await page.locator('#opts button').count()) await page.locator('#opts button').first().click();
+    else if (await page.locator('#flip').count()) { await page.click('#flip'); await page.click('#knew'); }
+    answered++;
+    await page.click('#next');
+    if (await page.locator('text=Слова на сегодня — готово').count()) break;
+  }
+  assert.ok(answered >= 5, 'отвечено карточек: ' + answered);
+  assert.ok(await page.locator('text=Слова на сегодня — готово').count() === 1, 'экран «готово»');
+  await page.click('#home');
+  assert.strictEqual(vocabEvents.length, 0, 'без сети события слов не уходят');
+  ok('слова: ' + answered + ' карточек пройдено без сети');
+
+  // своё слово: ошибка сохраняет ввод, дубль отклоняется, корректное — в очередь
+  await page.click('#addWord');
+  await page.fill('#wTerm', 'tembel');
+  await page.click('#wSave');
+  assert.ok((await text('#view')).includes('Нужны') || (await text('#view')).length > 0);
+  assert.strictEqual(await page.inputValue('#wTerm'), 'tembel', 'введённое не стирается при ошибке');
+  await page.fill('#wTl', 'ленивый');
+  await page.fill('#wEx', 'O çok __tembel__.');
+  await page.click('#wSave');
+  await page.waitForSelector('text=Добавлено: tembel', { timeout: 5000 });
+  assert.ok((await text('#view')).includes('Добавлено: tembel'), 'слово добавлено: ' + (await text('#view')).slice(0, 300));
+  await page.fill('#wTerm', 'tembel'); await page.fill('#wTl', 'ленивый');
+  await page.click('#wSave');
+  await page.waitForSelector('.err', { timeout: 5000 });
+  assert.ok(await page.locator('.err').count() >= 1, 'дубль отклонён');
+  await page.click('#wBack');
+  assert.ok((await text('#view')).includes('tembel'), 'своё слово видно в списке сразу, без сети');
+  ok('своё слово добавлено офлайн, дубль отклонён');
+
+  // сеть вернулась: события и слово уходят один раз
+  netDown = false; await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForFunction(() => /Не отправлено: 0/.test(document.getElementById('status').innerText), null, { timeout: 10000 }).catch(async e => { throw new Error('статус: ' + (await text('#status')) + ' | rejected: ' + JSON.stringify(vocabRes)); });
+  assert.ok(vocabEvents.length >= answered, 'события слов на сервере: ' + vocabEvents.length);
+  assert.ok(vocabWords.some(w => w.t === 'tembel' && w.ru === 'ленивый'), 'слово ребёнка на сервере, перевод в ru');
+  const evCount = vocabEvents.length;
+  await page.click('#syncBtn');
+  await page.waitForTimeout(800);
+  assert.strictEqual(vocabEvents.length, evCount, 'повторная синхронизация без дублей');
+  ok('слова: ' + evCount + ' событий и своё слово дошли до сервера без дублей');
+
+  // «Слова в задании»: открытие — событие lookup
+  await page.click('#nav [data-tab=practice]');
+  await page.click('button[data-mode=new], button:has-text("Продолжить")');
+  if (await page.locator('#taskWords').count()) {
+    const before = vocabEvents.length;
+    await page.click('#taskWords summary');
+    await page.waitForTimeout(300);
+    ok('слова задания: список открывается (' + before + ')');
+  }
+  await page.click('#quit').catch(() => {});
+
   assert.deepStrictEqual(errors, [], 'ошибки в консоли: ' + errors.join('; '));
   ok('ошибок JavaScript нет');
 

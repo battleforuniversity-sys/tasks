@@ -8,16 +8,18 @@
   var titleEl = document.getElementById('title');
   document.getElementById('dyncss').textContent = P.dynCss();
 
-  var state = { config: null, pack: null, done: {}, queued: 0, lastSync: '', syncing: false, syncError: '', session: null, tab: 'home', weekIdx: null, dynSubject: '', dynMetric: 'all', queueItems: [] };
+  var state = { vnew: [], vstate: {}, vq: [], vdaily: { date: '', n: 0 }, wordsFilter: 'all', wordsQuery: '', config: null, pack: null, done: {}, queued: 0, lastSync: '', syncing: false, syncError: '', session: null, tab: 'home', weekIdx: null, dynSubject: '', dynMetric: 'all', queueItems: [] };
 
   // ------------------------------------------------------------------ хранилище (IndexedDB)
   var dbPromise = new Promise(function (resolve, reject) {
-    var req = indexedDB.open('tasks-app', 1);
+    var req = indexedDB.open('tasks-app', 2);
     req.onupgradeneeded = function () {
       var db = req.result;
-      db.createObjectStore('kv');
-      db.createObjectStore('queue', { keyPath: 'attempt_id' });
-      db.createObjectStore('done', { keyPath: 'task_id' });
+      var make = function (name, opts) { if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, opts); };
+      make('kv'); make('queue', { keyPath: 'attempt_id' }); make('done', { keyPath: 'task_id' });
+      make('vqueue', { keyPath: 'ev_id' });   // события карточек, ещё не отправленные
+      make('vnew', { keyPath: 'id' });        // слова, добавленные ребёнком, пока сервер их не подтвердил
+      make('vstate', { keyPath: 'id' });      // состояние повторения на этом устройстве
     };
     req.onsuccess = function () { resolve(req.result); };
     req.onerror = function () { reject(req.error); };
@@ -40,6 +42,14 @@
   var queueDelete = function (ids) { return tx('queue', 'readwrite', function (s) { ids.forEach(function (id) { s.delete(id); }); }); };
   var doneAll = function () { return tx('done', 'readonly', function (s) { return s.getAll(); }); };
   var donePut = function (d) { return tx('done', 'readwrite', function (s) { return s.put(d); }); };
+  var vqAll = function () { return tx('vqueue', 'readonly', function (s) { return s.getAll(); }); };
+  var vqPut = function (e) { return tx('vqueue', 'readwrite', function (s) { return s.put(e); }); };
+  var vqDelete = function (ids) { return tx('vqueue', 'readwrite', function (s) { ids.forEach(function (id) { s.delete(id); }); }); };
+  var vnewAll = function () { return tx('vnew', 'readonly', function (s) { return s.getAll(); }); };
+  var vnewPut = function (w) { return tx('vnew', 'readwrite', function (s) { return s.put(w); }); };
+  var vnewDelete = function (ids) { return tx('vnew', 'readwrite', function (s) { ids.forEach(function (id) { s.delete(id); }); }); };
+  var vstateAll = function () { return tx('vstate', 'readonly', function (s) { return s.getAll(); }); };
+  var vstatePut = function (st) { return tx('vstate', 'readwrite', function (s) { return s.put(st); }); };
 
   // ------------------------------------------------------------------ утилиты
   function esc(v) {
@@ -125,19 +135,25 @@
 
   // ------------------------------------------------------------------ синхронизация
   function refreshCounters() {
-    return Promise.all([queueAll(), doneAll()]).then(function (r) {
+    return Promise.all([queueAll(), doneAll(), vnewAll(), vstateAll(), vqAll(), kvGet('vdaily')]).then(function (r) {
       state.queued = r[0].length;
       state.queueItems = r[0];
       state.done = {};
       r[1].forEach(function (d) { state.done[d.task_id] = d; });
+      state.vnew = r[2];
+      state.vstate = {};
+      r[3].forEach(function (s) { state.vstate[s.id] = s; });
+      state.vq = r[4];
+      var d = r[5];
+      state.vdaily = d && d.date === today() ? d : { date: today(), n: 0 };
     });
   }
 
   function renderStatus() {
     var online = navigator.onLine;
     var html = '<span class="pill ' + (online ? 'ok' : 'warn') + '">' + (online ? 'Есть сеть' : 'Нет сети') + '</span>';
-    html += '<span class="pill">v12</span>';
-    html += '<span class="pill ' + (state.queued ? 'warn' : '') + '">Не отправлено: ' + state.queued + '</span>';
+    html += '<span class="pill">v13</span>';
+    html += '<span class="pill ' + (state.queued + state.vq.length + state.vnew.length ? 'warn' : '') + '">Не отправлено: ' + (state.queued + state.vq.length + state.vnew.length) + '</span>';
     if (state.syncError) html += '<span class="pill warn" role="alert">' + esc(state.syncError) + '</span>';
     else if (state.lastSync) html += '<span class="pill">Синхронизировано в ' + esc(clock(state.lastSync)) + '</span>';
     html += '<button id="syncBtn"' + (state.syncing ? ' disabled' : '') + '>' + (state.syncing ? 'Синхронизация…' : 'Синхронизировать') + '</button>';
@@ -157,15 +173,26 @@
     state.syncing = true; state.syncError = ''; renderStatus();
 
     var cfg = state.config;
-    return queueAll().then(function (queue) {
-      if (!queue.length) return null;
+    return Promise.all([queueAll(), vqAll(), vnewAll()]).then(function (r) {
+      var queue = r[0], vq = r[1], vn = r[2];
+      if (!queue.length && !vq.length && !vn.length) return null;
       return fetchJson(cfg.api + '?action=sync', {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },     // без предварительного запроса (CORS preflight)
-        body: JSON.stringify({ token: cfg.token, device: deviceName(), attempts: queue })
+        body: JSON.stringify({ token: cfg.token, device: deviceName(), attempts: queue, vocab_events: vq,
+          vocab_new: vn.map(function (w) { return { word_id: w.id, lang: w.l, term: w.t, translation: w.l === 'tr' ? w.ru : w.tr, example: w.ex }; }) })
       }).then(function (res) {
         if (res.ok !== true) throw new Error(res.error === 'forbidden' ? 'forbidden' : 'Сервер отклонил запрос');
-        return queueDelete(L.idsToRemove(res));
+        var v = res.vocab;
+        var done = queueDelete(L.idsToRemove(res));
+        if (v && v.ok === true) {
+          // События убираем из очереди сразу. Слова ребёнка остаются на устройстве, пока не придут в пакете (см. ниже).
+          var evIds = (v.accepted_events || []).concat(v.duplicate_events || []).concat((v.rejected || []).map(function (x) { return x.id; }));
+          return done.then(function () { return vqDelete(evIds); }).then(function () {
+            return vnewDelete((v.rejected || []).map(function (x) { return x.id; }));
+          });
+        }
+        return done;
       });
     }).then(function () {
       return fetchJson(cfg.api + '?action=pack&token=' + encodeURIComponent(cfg.token));
@@ -174,6 +201,11 @@
       state.pack = res.pack;
       prefetchImages(res.pack);
       return kvSet('pack', res.pack);
+    }).then(function () {
+      // Слова ребёнка, которые уже есть в пакете с сервера, локальная копия больше не нужна.
+      var inPack = {};
+      ((state.pack && state.pack.vocab && state.pack.vocab.words) || []).forEach(function (w) { inPack[w.id] = true; });
+      return vnewAll().then(function (list) { return vnewDelete(list.filter(function (w) { return inPack[w.id]; }).map(function (w) { return w.id; })); });
     }).then(function () {
       state.lastSync = new Date().toISOString();
       return kvSet('lastSync', state.lastSync);
@@ -247,8 +279,257 @@
     return '<div class="tbar" role="img" aria-label="' + esc(label) + '"><i class="g" style="width:' + green + '%"></i><i class="r" style="width:' + red + '%"></i></div>';
   }
 
+  // ------------------------------------------------------------------ словарь
+  var WORDS_DAILY = 20;      // карточек в день (≈ 10 минут)
+  var WORDS_NEW_PER_DAY = 5; // из них новых слов
+
+  function allWords() { return L.poolWords((state.pack && state.pack.vocab && state.pack.vocab.words) || [], state.vnew); }
+  /** Состояние слов: с сервера (все устройства) и локальное — берём более свежее по времени последнего события. */
+  function allStates() {
+    var map = {}, server = (state.pack && state.pack.vocab && state.pack.vocab.state) || {};
+    Object.keys(server).forEach(function (id) { map[id] = server[id]; });
+    Object.keys(state.vstate).forEach(function (id) { map[id] = L.newerState(map[id], state.vstate[id]); });
+    return map;
+  }
+  function wordsPlan(extra) {
+    var words = allWords(), states = allStates();
+    var done = state.vdaily.n;
+    var total = extra ? 10 : Math.max(0, WORDS_DAILY - done);
+    var s = L.pickSession(words, states, today(), { total: total, newLimit: extra ? 5 : WORDS_NEW_PER_DAY });
+    return { words: words, states: states, session: s, count: s.due.length + s.fresh.length, done: done };
+  }
+
+  function wordsCardHtml() {
+    var pl = wordsPlan(false);
+    var body = pl.words.length
+      ? (pl.count ? 'Повторить: ' + pl.session.due.length + ' · новых: ' + pl.session.fresh.length : '✓ На сегодня всё')
+      : 'Слов пока нет — добавьте своё или дождитесь слов из заданий';
+    return '<section class="card" id="wordsCard"><h2>📚 Слова — 10 минут</h2>' +
+      tbar(pct(Math.min(pl.done, WORDS_DAILY), WORDS_DAILY), 0, 'Слов сегодня') +
+      '<div class="muted">Сделано ' + Math.min(pl.done, WORDS_DAILY) + ' из ' + WORDS_DAILY + ' · ' + esc(body) + '</div>' +
+      '<div class="row">' + (pl.count ? '<button class="primary" data-w="start">Начать (' + pl.count + ')</button>' : '') +
+      '<button data-w="open">Все слова</button></div></section>';
+  }
+  function bindWordsCard() {
+    Array.prototype.forEach.call(view.querySelectorAll('[data-w]'), function (b) {
+      b.onclick = function () { b.getAttribute('data-w') === 'start' ? startWords(false) : route('words'); };
+    });
+  }
+
+  function renderWords() {
+    titleEl.textContent = 'Слова';
+    var pl = wordsPlan(false), words = pl.words, states = pl.states;
+    var st = L.vocabStats(words, states, today());
+    var html = wordsCardHtml();
+    html += '<div class="grid"><section class="card"><h2>Всего слов</h2><div class="big">' + st.total + '</div></section>' +
+      '<section class="card"><h2>Учу</h2><div class="big">' + st.learning + '</div><div class="muted">ещё ' + st.fresh + ' новых</div></section>' +
+      '<section class="card"><h2>Выучено</h2><div class="big"><span class="good">' + st.known + '</span></div><div class="muted">ящики 4–5</div></section></div>';
+    html += '<div class="row" style="margin:0 0 12px"><button class="primary" id="addWord">＋ Добавить своё слово</button>' +
+      (!pl.count && words.length ? '<button id="moreWords">Ещё 10 слов</button>' : '') + '</div>';
+
+    var f = state.wordsFilter, q = state.wordsQuery.trim().toLowerCase();
+    var chips = [['all', 'Все'], ['tr', 'Турецкие'], ['en', 'Английские'], ['child', 'Мои'], ['due', 'На повтор']];
+    html += '<div class="chips" role="group" aria-label="Фильтр">' + chips.map(function (c) {
+      return '<button data-f="' + c[0] + '"' + (f === c[0] ? ' aria-pressed="true"' : '') + '>' + c[1] + '</button>';
+    }).join('') + '</div>';
+    html += '<input type="text" id="wq" placeholder="Поиск слова" autocomplete="off" autocapitalize="off" aria-label="Поиск слова" value="' + esc(state.wordsQuery) + '" style="margin:0 0 12px">';
+
+    var list = words.filter(function (w) {
+      if (f === 'tr' && w.l !== 'tr') return false;
+      if (f === 'en' && w.l !== 'en') return false;
+      if (f === 'child' && w.src !== 'child') return false;
+      if (f === 'due') { var s0 = states[w.id]; if (!(s0 && s0.n > 0 && s0.d && s0.d <= today())) return false; }
+      if (q && (w.t + ' ' + L.translations(w).join(' ')).toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
+    html += '<div id="wlist">' + list.slice(0, 60).map(function (w) {
+      var s = states[w.id], box = s && s.n ? s.b : 0;
+      var dots = [1, 2, 3, 4, 5].map(function (i) { return i <= box ? '●' : '○'; }).join('');
+      return '<div class="item home"><div class="t">' + esc(w.t) + ' <span class="muted">' + (w.l === 'tr' ? 'TR' : 'EN') + '</span> <span class="muted" aria-label="Ящик ' + box + ' из 5">' + dots + '</span></div>' +
+        '<div class="m">' + esc(L.translations(w).join(' · ')) + '</div>' +
+        (w.ex ? '<div class="m">' + rich(w.ex) + (w.xt ? '<br>' + esc(w.xt) : '') + '</div>' : '') + '</div>';
+    }).join('') + (list.length > 60 ? '<p class="muted">Показаны первые 60 из ' + list.length + '. Уточните поиск.</p>' : '') +
+      (!list.length ? '<p class="muted">Ничего не найдено.</p>' : '') + '</div>';
+    view.innerHTML = html;
+
+    bindWordsCard();
+    document.getElementById('addWord').onclick = function () { renderAddWord(); };
+    var more = document.getElementById('moreWords'); if (more) more.onclick = function () { startWords(true); };
+    Array.prototype.forEach.call(view.querySelectorAll('[data-f]'), function (b) {
+      b.onclick = function () { state.wordsFilter = b.getAttribute('data-f'); renderWords(); };
+    });
+    var qi = document.getElementById('wq');
+    qi.oninput = function () {
+      state.wordsQuery = qi.value;
+      var pos = qi.selectionStart;
+      renderWords();
+      var again = document.getElementById('wq'); again.focus(); try { again.setSelectionRange(pos, pos); } catch (e) { /* не критично */ }
+    };
+  }
+
+  // Своё слово: ребёнок добавляет слово и перевод; предложение — по желанию (если пусто, его допишет автопилот).
+  function renderAddWord(message, lang) {
+    state.session = null;
+    titleEl.textContent = 'Новое слово';
+    lang = lang || state.addLang || 'tr';
+    state.addLang = lang;
+    document.getElementById('nav').style.display = 'none';
+    view.innerHTML = '<div class="card"><h2>Добавить слово</h2>' +
+      (message ? '<p class="' + (message.err ? 'err' : 'good') + '" role="status">' + esc(message.text) + '</p>' : '') +
+      '<div class="chips" role="group" aria-label="Язык слова"><button data-l="tr"' + (lang === 'tr' ? ' aria-pressed="true"' : '') + '>Турецкое слово</button>' +
+      '<button data-l="en"' + (lang === 'en' ? ' aria-pressed="true"' : '') + '>Английское слово</button></div>' +
+      '<p class="muted" style="margin:0 0 4px">Слово</p><input type="text" id="wTerm" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Слово">' +
+      '<p class="muted" style="margin:12px 0 4px">' + (lang === 'tr' ? 'Перевод по-русски' : 'Перевод по-турецки') + '</p>' +
+      '<input type="text" id="wTl" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Перевод">' +
+      '<p class="muted" style="margin:12px 0 4px">Предложение с этим словом (по желанию)</p>' +
+      '<input type="text" id="wEx" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Предложение">' +
+      '<p class="muted">Если предложения нет — оставьте пустым: оно появится позже.</p>' +
+      '<div class="row"><button class="primary" id="wSave">Сохранить</button><button id="wBack">Готово</button></div></div>';
+    Array.prototype.forEach.call(view.querySelectorAll('[data-l]'), function (b) {
+      b.onclick = function () { renderAddWord(null, b.getAttribute('data-l')); };
+    });
+    document.getElementById('wBack').onclick = function () { route('words'); };
+    document.getElementById('wTerm').focus();
+    document.getElementById('wSave').onclick = function () {
+      var res = L.validateNewWord({ lang: lang, term: document.getElementById('wTerm').value, translation: document.getElementById('wTl').value,
+        example: document.getElementById('wEx').value }, allWords());
+      if (!res.ok) return renderAddWordKeep(res.error);
+      vnewPut(res.word).then(refreshCounters).then(function () {
+        renderStatus();
+        renderAddWord({ text: 'Добавлено: ' + res.word.t + ' ✓' }, lang);
+        if (navigator.onLine) syncSoon();
+      });
+    };
+  }
+  // Показать ошибку, не стирая введённое.
+  function renderAddWordKeep(text) {
+    var keep = ['wTerm', 'wTl', 'wEx'].map(function (id) { return document.getElementById(id).value; });
+    renderAddWord({ text: text, err: true }, state.addLang);
+    ['wTerm', 'wTl', 'wEx'].forEach(function (id, i) { document.getElementById(id).value = keep[i]; });
+  }
+
+  // Ежедневный блок: карточки по очереди; ошибочные слова вернутся в конце ещё раз.
+  function startWords(extra) {
+    var pl = wordsPlan(extra);
+    var items = pl.session.due.concat(pl.session.fresh).map(function (w) { return { w: w, retry: false }; });
+    if (!items.length) return route('words');
+    state.session = { kind: 'words', items: items, index: 0, correct: 0, asked: 0, answered: false, back: 'words', pool: pl.words, extra: !!extra };
+    renderWordCard();
+  }
+
+  function recordWordEvent(ev) {
+    var prev = allStates()[ev.word_id];
+    var next = L.srsApply(prev || null, { kind: ev.kind, ok: ev.ok, at: ev.at });
+    next.id = ev.word_id;
+    state.vstate[ev.word_id] = next;                 // сразу, чтобы экраны показали новое состояние
+    var jobs = [vqPut(ev), vstatePut(next)];
+    if (ev.kind === 'review') {
+      state.vdaily = { date: today(), n: (state.vdaily.date === today() ? state.vdaily.n : 0) + 1 };
+      jobs.push(kvSet('vdaily', state.vdaily));
+    }
+    return Promise.all(jobs).then(refreshCounters).then(function () {
+      renderStatus();
+      if (navigator.onLine) syncSoon();
+    });
+  }
+
+  function renderWordCard() {
+    var s = state.session, item = s.items[s.index];
+    if (!item) return renderWordsFinish();
+    var states = allStates();
+    var dir = item.retry ? 'f' : L.pickDir(states[item.w.id]);
+    var card = L.makeCard(item.w, dir, s.pool);
+    s.card = card; s.answered = false;
+    document.getElementById('nav').style.display = 'none';
+    titleEl.textContent = 'Слова';
+
+    var head = '<div class="muted">Слово ' + (s.index + 1) + ' из ' + s.items.length + (item.retry ? ' · повтор' : '') + '</div>' +
+      '<div class="bar-p"><i style="width:' + Math.round(s.index * 100 / s.items.length) + '%"></i></div>' +
+      '<div class="muted">' + (card.dir === 'f' ? (item.w.l === 'tr' ? 'Что значит по-русски?' : 'Как это по-турецки?') : (item.w.l === 'tr' ? 'Как это по-турецки?' : 'Как это по-английски?')) + '</div>' +
+      '<div class="q" lang="' + (card.dir === 'f' ? item.w.l : (item.w.l === 'tr' ? 'ru' : item.w.l === 'en' ? 'tr' : 'ru')) + '">' + esc(card.prompt) + '</div>' +
+      (card.sentence ? '<div class="muted" style="margin:-8px 0 14px">' + rich(card.sentence) + '</div>' : '');
+
+    if (card.options) {
+      view.innerHTML = '<div class="card">' + head + '<div class="opts" id="opts">' +
+        card.options.map(function (o, i) { return '<button data-i="' + i + '">' + esc(o) + '</button>'; }).join('') +
+        '</div><div class="row"><button id="dk">Не знаю</button></div><div id="fb"></div></div><div class="row"><button id="quit">Назад</button></div>';
+      Array.prototype.forEach.call(view.querySelectorAll('#opts button'), function (b) {
+        b.onclick = function () { answerWord(Number(b.getAttribute('data-i')), b); };
+      });
+      document.getElementById('dk').onclick = function () { answerWord(-1, null); };
+    } else {
+      view.innerHTML = '<div class="card">' + head + '<div class="row"><button class="primary" id="flip">Показать ответ</button></div><div id="fb"></div></div>' +
+        '<div class="row"><button id="quit">Назад</button></div>';
+      document.getElementById('flip').onclick = function () {
+        document.getElementById('flip').parentNode.style.display = 'none';
+        document.getElementById('fb').innerHTML = '<div class="fb"><b>' + esc(card.answer) + '</b></div><div class="row"><button id="knew">Знал</button><button id="didnt">Не знал</button></div>';
+        document.getElementById('knew').onclick = function () { answerWord(-2, null, true); };
+        document.getElementById('didnt').onclick = function () { answerWord(-2, null, false); };
+      };
+    }
+    document.getElementById('quit').onclick = function () { route('words'); };
+  }
+
+  function answerWord(index, button, selfOk) {
+    var s = state.session, card = s.card, item = s.items[s.index];
+    if (s.answered) return;
+    s.answered = true;
+    var ok = index === -2 ? !!selfOk : index === card.correct;
+    s.asked++; if (ok) s.correct++;
+
+    recordWordEvent({ ev_id: L.makeAttemptId(), word_id: item.w.id, kind: 'review', dir: card.dir, ok: ok, at: new Date().toISOString() });
+    if (!ok && !item.retry) s.items.push({ w: item.w, retry: true });
+
+    if (card.options) {
+      Array.prototype.forEach.call(view.querySelectorAll('#opts button'), function (b) {
+        b.disabled = true;
+        if (Number(b.getAttribute('data-i')) === card.correct) b.classList.add('right');
+        else if (b === button) b.classList.add('wrong');
+      });
+      document.getElementById('dk').disabled = true;
+    }
+    var w = item.w;
+    document.getElementById('fb').innerHTML = '<div class="fb ' + (ok ? 'ok' : 'bad') + '" role="status"><b>' + (ok ? 'Верно!' : 'Запомним ещё раз.') + '</b>' +
+      '<div><strong>' + esc(w.t) + '</strong> — ' + esc(L.translations(w).join(' · ')) + '</div>' +
+      (w.ex ? '<div style="margin-top:6px">' + rich(w.ex) + '</div>' + (w.xt ? '<div class="muted">' + esc(w.xt) + '</div>' : '') : '') + '</div>' +
+      '<div class="row"><button class="primary" id="next">' + (s.index + 1 >= s.items.length ? 'Закончить' : 'Дальше') + '</button></div>';
+    var next = document.getElementById('next');
+    next.onclick = function () { s.index++; renderWordCard(); };
+    next.focus();
+  }
+
+  function renderWordsFinish() {
+    var s = state.session;
+    titleEl.textContent = 'Готово';
+    view.innerHTML = '<div class="card"><h2>Слова на сегодня — готово!</h2><p>Верно ' + s.correct + ' из ' + s.asked + '.</p>' +
+      '<p class="muted">Ошибочные слова вернутся завтра и в ближайшие дни, выученные — через несколько дней.</p>' +
+      '<div class="row"><button class="primary" id="home">Готово</button></div></div>';
+    state.session = null;
+    document.getElementById('home').onclick = function () { route('words'); };
+  }
+
+  // Слова задания: список под вопросом. Открытие списка — сигнал «слово непонятно»: слово вернётся в повторение раньше.
+  function taskWordsHtml(task) {
+    var ws = L.wordsForTask(allWords(), task.id);
+    if (!ws.length) return '';
+    return '<details id="taskWords" style="margin:0 0 14px"><summary>📚 Слова в задании (' + ws.length + ')</summary>' +
+      ws.map(function (w) { return '<div class="item home"><div class="t">' + esc(w.t) + '</div><div class="m">' + esc(L.translations(w).join(' · ')) + '</div></div>'; }).join('') + '</details>';
+  }
+  function bindTaskWords(task) {
+    var box = document.getElementById('taskWords');
+    if (!box) return;
+    var sent = false;
+    box.ontoggle = function () {
+      if (!box.open || sent) return;
+      sent = true;
+      L.wordsForTask(allWords(), task.id).forEach(function (w) {
+        recordWordEvent({ ev_id: L.makeAttemptId(), word_id: w.id, kind: 'lookup', dir: '', at: new Date().toISOString() });
+      });
+    };
+  }
+
   // ------------------------------------------------------------------ навигация
-  var TABS = [['home', 'Дашборд'], ['today', 'Сегодня'], ['upcoming', 'Скоро'], ['debt', 'Долг'], ['schedule', 'Неделя'], ['dynamics', 'Динамика'], ['practice', 'Тренировка']];
+  var TABS = [['home', 'Дашборд'], ['today', 'Сегодня'], ['upcoming', 'Скоро'], ['debt', 'Долг'], ['schedule', 'Неделя'], ['dynamics', 'Динамика'], ['practice', 'Тренировка'], ['words', 'Слова']];
 
   function renderNav() {
     document.getElementById('nav').style.display = '';
@@ -257,6 +538,7 @@
       var n = '';
       if (st && t[0] === 'today' && st.all.today) n = '<span class="n">' + st.all.todayDone + '/' + st.all.today + '</span>';
       if (st && t[0] === 'debt' && st.all.debt) n = '<span class="n red">' + st.all.debt + '</span>';
+      if (t[0] === 'words') { var wc = wordsPlan(false).count; if (wc) n = '<span class="n">' + wc + '</span>'; }
       return '<button data-tab="' + t[0] + '"' + (state.tab === t[0] ? ' aria-current="page"' : '') + '>' + t[1] + n + '</button>';
     }).join('');
     Array.prototype.forEach.call(document.querySelectorAll('#nav [data-tab]'), function (b) {
@@ -268,7 +550,8 @@
     state.session = null;
     state.tab = tab;
     renderNav();
-    if (tab === 'today') return renderAssigned('today');
+    if (tab === 'words') return renderWords();
+    if (tab === 'today') { renderAssigned('today'); view.insertAdjacentHTML('afterbegin', wordsCardHtml()); bindWordsCard(); return; }
     if (tab === 'debt') return renderAssigned('debt');
     if (tab === 'upcoming') return renderUpcoming();
     if (tab === 'schedule') return renderSchedule();
@@ -336,6 +619,8 @@
 
     if (state.pack.generatedAt) html += '<p class="muted">Данные от ' + esc(clock(state.pack.generatedAt)) + '. Задания и долг считаются на этом устройстве сразу.</p>';
     view.innerHTML = html;
+    var linkBox = view.querySelector('.links');
+    if (linkBox) { var wc = wordsPlan(false).count; linkBox.insertAdjacentHTML('beforeend', '<button data-go="words">📚 Слова<br><small>' + (wc ? 'на сегодня ' + wc : 'всё сделано') + '</small></button>'); }
     Array.prototype.forEach.call(view.querySelectorAll('[data-go]'), function (b) { b.onclick = function () { route(b.getAttribute('data-go')); }; });
   }
 
@@ -620,7 +905,7 @@
 
     var head = '<div class="muted">Задание ' + (s.index + 1) + ' из ' + s.tasks.length + '</div>' +
       '<div class="bar-p"><i style="width:' + Math.round(s.index * 100 / s.tasks.length) + '%"></i></div>' +
-      '<div class="q">' + rich(task.q) + '</div>' + figure(task);
+      '<div class="q">' + rich(task.q) + '</div>' + figure(task) + taskWordsHtml(task);
 
     if (task.type === 'choice') {
       view.innerHTML = '<div class="card">' + head + '<div class="opts" id="opts">' +
@@ -641,6 +926,7 @@
       input.focus();
     }
     document.getElementById('quit').onclick = function () { route(s.back || 'practice'); };
+    bindTaskWords(task);
   }
 
   function answer(task, given, button) {
