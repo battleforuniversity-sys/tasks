@@ -69,7 +69,7 @@ async function mockApi(route) {
     const tomorrow = new Date(day.getTime() + 86400000);
     pack.plan = pack.plan.concat(ids.slice(6, 9).map(id => ({ date: iso(tomorrow), topicId: tasks[0].topicId, subjectId: 'ENG', taskId: id })));
     pack.answered = {};
-    pack.vocab = { words: JSON.parse(JSON.stringify(vocabWords)), state: {}, dyn: { days: [{ d: iso(yesterday), l: 'tr', r: 10, ok: 7, lk: 1 }] } };
+    pack.vocab = { words: JSON.parse(JSON.stringify(vocabWords)), state: {}, dyn: { days: [{ d: iso(new Date(day.getTime() - 3 * 86400000)), l: 'tr', r: 10, ok: 7, lk: 1 }] } };
     pack.dyn = { subjects: [{ id: 'ENG', name: 'Английский' }, { id: 'BIO', name: 'Биология' }],
       log: [{ t: 'x1', s: 'ENG', d: iso(new Date(day.getTime() - 8 * 86400000)) }, { t: 'x2', s: 'BIO', d: iso(new Date(day.getTime() - 9 * 86400000)) }, { t: 'x3', s: 'BIO', d: iso(new Date(day.getTime() - 15 * 86400000)) }] };
     pack.home = { exam: { name: 'YKS 2027', date: '2027-06-19' }, topics: { done: 1, total: 4, percent: 25 }, tasks: {},
@@ -103,6 +103,8 @@ async function mockApi(route) {
   let dash = await text('#view');
   assert.ok(dash.includes('Задания на сегодня') && dash.includes('0 из 3'), 'дашборд: сегодня 0 из 3');
   assert.ok(dash.includes('долг 3') || dash.includes('3 задания'), 'дашборд: долг 3');
+  assert.ok(dash.includes('Слова: не делали 2 дня подряд'), 'дашборд: слова не делали 2 дня — красным: ' + dash.slice(0, 250));
+  assert.ok(await page.locator('.links button.red:has-text("Слова")').count() === 1, 'кнопка слов красная');
   assert.ok(dash.includes('📱 Задания в приложении') && dash.includes('📖 Задания в книжке'), 'значки по предметам');
   assert.ok((await text('#nav')).includes('Долг'));
   await page.click('#nav [data-tab=upcoming]');
@@ -251,7 +253,7 @@ async function mockApi(route) {
   // слова — обязательная часть дня: видны на дашборде, отмечаются сделанными, учитываются в счётчике «Сегодня»
   await page.click('#nav [data-tab=home]');
   const hv = await text('#view');
-  assert.ok(hv.includes('📚 Слова на сегодня') && hv.includes('✓ сделано'), 'дашборд: слова сделаны: ' + hv.slice(0, 200));
+  assert.ok(!hv.includes('не делали') && hv.includes('📚 Слова на сегодня') && hv.includes('✓ сделано'), 'дашборд: слова сделаны: ' + hv.slice(0, 200));
   assert.ok((await text('#nav')).includes('4/4'), 'счётчик «Сегодня»: 3 задания + слова = 4/4: ' + (await text('#nav')));
   ok('слова на дашборде и в счётчике дня как обязательная часть');
   await page.click('#nav [data-tab=words]');

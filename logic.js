@@ -267,6 +267,20 @@
     return { weeks: weeks };
   }
 
+  /**
+   * Сколько полных дней подряд (до вчера включительно) слова не делали. null — слова ещё ни разу не начинали.
+   * activeDates — даты «yyyy-MM-dd», в которые был хотя бы один ответ на карточку; сегодняшний день ещё идёт и пропуском не считается.
+   */
+  function wordsMissedDays(today, activeDates) {
+    var last = '';
+    (activeDates || []).forEach(function (d) { if (d <= today && d > last) last = d; });
+    if (!last) return null;
+    if (last === today) return 0;
+    var n = 0, d = addDays(today, -1);
+    while (d > last) { n++; d = addDays(d, -1); }
+    return n;
+  }
+
   /** Состояние + слова → сводка по языку (lang: '' — все): {total, fresh, learning, known, due}. */
   function vocabStatsLang(words, states, today, lang) {
     return vocabStats((words || []).filter(function (w) { return !lang || w.l === lang; }), states, today);
@@ -280,7 +294,7 @@
     topicStats: topicStats, pickTasks: pickTasks, makeAttemptId: makeAttemptId, idsToRemove: idsToRemove,
     srsApply: srsApply, newerState: newerState, poolWords: poolWords, translations: translations, answerSide: answerSide, pickSession: pickSession,
     makeCard: makeCard, pickDir: pickDir, shuffle: shuffle, validateNewWord: validateNewWord, vocabStats: vocabStats, wordsForTask: wordsForTask,
-    dayOf: dayOf, addDays: addDays, weeklyVocab: weeklyVocab, weekStartOf: weekStartOf, vocabStatsLang: vocabStatsLang };
+    dayOf: dayOf, addDays: addDays, weeklyVocab: weeklyVocab, weekStartOf: weekStartOf, vocabStatsLang: vocabStatsLang, wordsMissedDays: wordsMissedDays };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Logic = api;

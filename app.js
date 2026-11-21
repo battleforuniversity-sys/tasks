@@ -153,7 +153,7 @@
   function renderStatus() {
     var online = navigator.onLine;
     var html = '<span class="pill ' + (online ? 'ok' : 'warn') + '">' + (online ? 'Есть сеть' : 'Нет сети') + '</span>';
-    html += '<span class="pill">v15</span>';
+    html += '<span class="pill">v16</span>';
     html += '<span class="pill ' + (state.queued + state.vq.length + state.vnew.length ? 'warn' : '') + '">Не отправлено: ' + (state.queued + state.vq.length + state.vnew.length) + '</span>';
     if (state.syncError) html += '<span class="pill warn" role="alert">' + esc(state.syncError) + '</span>';
     else if (state.lastSync) html += '<span class="pill">Синхронизировано в ' + esc(clock(state.lastSync)) + '</span>';
@@ -311,9 +311,26 @@
     return { required: required, done: done, n: Math.min(pl.done, WORDS_DAILY), left: pl.count };
   }
 
+  /** Сколько полных дней подряд слова не делали (null — ещё не начинали). Данные: суммы по дням с сервера, состояние слов, ответы этого устройства. */
+  function wordsMissed() {
+    var dates = [], srv = (state.pack && state.pack.vocab && state.pack.vocab.dyn) || { days: [] };
+    (srv.days || []).forEach(function (d) { if (d.r > 0) dates.push(d.d); });
+    state.vq.forEach(function (ev) { if (ev.kind === 'review') dates.push(L.dayOf(ev.at)); });
+    var st = allStates();
+    Object.keys(st).forEach(function (id) { if (st[id].n > 0) { if (st[id].f) dates.push(st[id].f); if (st[id].at) dates.push(L.dayOf(st[id].at)); } });
+    if (state.vdaily.date === today() && state.vdaily.n > 0) dates.push(today());
+    return L.wordsMissedDays(today(), dates);
+  }
+
+  function missedText(n) { return 'не делали ' + n + ' ' + plural(n, 'день', 'дня', 'дней') + ' подряд'; }
+
   function wordsDashButton() {
     var wd = wordsDay();
     if (!wd.required) return '';
+    var miss = wordsMissed();
+    if (miss >= 1 && !wd.done) {      // пропущенные дни — красным, как долг
+      return '<button data-go="words" class="red">📚 Слова: ' + esc(missedText(miss)) + '<br><small>' + wd.n + ' из ' + WORDS_DAILY + ' сегодня · осталось ' + wd.left + '</small></button>';
+    }
     return '<button data-go="words"' + (wd.done ? '' : ' class="primary"') + '>📚 Слова на сегодня<br><small>' +
       (wd.done ? '✓ сделано (' + wd.n + ' карточек)' : wd.n + ' из ' + WORDS_DAILY + ' · осталось ' + wd.left) + '</small></button>';
   }
@@ -327,9 +344,10 @@
     var body = pl.pool.length
       ? (pl.count ? 'Повторить: ' + pl.session.due.length + ' · новых: ' + pl.session.fresh.length : '✓ На сегодня всё')
       : 'Слов пока нет — добавьте своё или дождитесь слов из заданий';
-    var wd = wordsDay();
+    var wd = wordsDay(), wm = wordsMissed();
     return '<section class="card" id="wordsCard"><h2>' + (wd.done ? '✓ Слова на сегодня сделаны' : '📚 Слова — обязательно каждый день, 10 минут') + '</h2>' +
       tbar(pct(Math.min(pl.done, WORDS_DAILY), WORDS_DAILY), 0, 'Слов сегодня') +
+      (wm >= 1 && !wd.done ? '<div class="debt" role="status">⏳ Слова ' + esc(missedText(wm)) + '</div>' : '') +
       '<div class="muted">Сделано ' + Math.min(pl.done, WORDS_DAILY) + ' из ' + WORDS_DAILY + ' · ' + esc(body) + '</div>' + chips +
       '<div class="row">' + (pl.count ? '<button class="primary" data-w="start">Начать (' + pl.count + ')</button>' : '') +
       '<button data-w="open">Все слова</button></div></section>';
@@ -577,7 +595,10 @@
         if (tt + (wdn.required ? 1 : 0)) n = '<span class="n">' + (td + (wdn.done ? 1 : 0)) + '/' + (tt + (wdn.required ? 1 : 0)) + '</span>';
       }
       if (st && t[0] === 'debt' && st.all.debt) n = '<span class="n red">' + st.all.debt + '</span>';
-      if (t[0] === 'words') { var wc = wordsPlan(false).count; if (wc) n = '<span class="n">' + wc + '</span>'; }
+      if (t[0] === 'words') {
+        var wc = wordsPlan(false).count, wm = wordsMissed();
+        if (wm >= 1 && !wordsDay().done) n = '<span class="n red">' + wm + ' дн.</span>'; else if (wc) n = '<span class="n">' + wc + '</span>';
+      }
       return '<button data-tab="' + t[0] + '"' + (state.tab === t[0] ? ' aria-current="page"' : '') + '>' + t[1] + n + '</button>';
     }).join('');
     Array.prototype.forEach.call(document.querySelectorAll('#nav [data-tab]'), function (b) {

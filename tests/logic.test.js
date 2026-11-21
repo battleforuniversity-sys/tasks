@@ -155,4 +155,14 @@ test('словарь: слова задания, сводка, склейка с
   assert.deepStrictEqual(L.translations(W('x', 'a', 'en', { tr: 'b', ru: 'в' })), ['b', 'в']);
 });
 
+test('слова: сколько дней подряд пропущено (сегодня не считается, нет ответов — null)', () => {
+  const L = require('../logic.js');
+  assert.strictEqual(L.wordsMissedDays('2026-11-21', []), null);
+  assert.strictEqual(L.wordsMissedDays('2026-11-21', ['2026-11-21']), 0, 'сегодня сделано');
+  assert.strictEqual(L.wordsMissedDays('2026-11-21', ['2026-11-20']), 0, 'вчера делали, сегодня ещё идёт');
+  assert.strictEqual(L.wordsMissedDays('2026-11-21', ['2026-11-18', '2026-11-10']), 2, 'пропущены 19 и 20');
+  assert.strictEqual(L.wordsMissedDays('2026-11-21', ['2026-11-18', '2026-11-25']), 2, 'даты из будущего игнорируются');
+  assert.strictEqual(L.wordsMissedDays('2026-12-02', ['2026-11-28']), 3, 'через границу месяца');
+});
+
 console.log('\nПройдено тестов: ' + passed);
