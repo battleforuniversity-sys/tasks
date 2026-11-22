@@ -132,8 +132,8 @@ test('словарь: направление — новое слово «туд�
 test('словарь: своё слово — проверка, дубли, перевод в нужное поле', () => {
   assert.strictEqual(L.validateNewWord({ lang: '', term: 'a', translation: 'b' }, []).ok, false);
   assert.strictEqual(L.validateNewWord({ lang: 'tr', term: ' ', translation: 'b' }, []).ok, false);
-  assert.match(L.validateNewWord({ lang: 'en', term: 'x', translation: '' }, []).error, /по-турецки/);
-  assert.match(L.validateNewWord({ lang: 'tr', term: 'x', translation: '' }, []).error, /по-русски/);
+  assert.match(L.validateNewWord({ lang: 'en', term: 'x', translation: '' }, []).error, /Turkish/);
+  assert.match(L.validateNewWord({ lang: 'tr', term: 'x', translation: '' }, []).error, /Russian/);
   const tr = L.validateNewWord({ lang: 'tr', term: '  kelime ', translation: 'слово', example: 'Bu bir __kelime__.' }, words);
   assert.ok(tr.ok); assert.strictEqual(tr.word.t, 'kelime'); assert.strictEqual(tr.word.ru, 'слово'); assert.strictEqual(tr.word.src, 'child');
   assert.ok(/^c_[0-9a-f]{22}$/.test(tr.word.id));

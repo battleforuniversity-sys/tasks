@@ -137,7 +137,7 @@
     return { weeks: weeks, subjects: subjects };
   }
 
-  var DYN_METRICS = { all: 'Всего ответов', wrong: 'Неверные', rep: 'Повторы' };
+  var DYN_METRICS = { all: 'Total answers', wrong: 'Wrong', rep: 'Repeats' };
 
   /** Столбчатая диаграмма со стеком: по X недели, по Y ответы. metric: all | wrong | rep; selected — id одного предмета или ''. */
   function dynamicsSvg(model, selected, metric) {
@@ -151,12 +151,12 @@
     var step = dynNiceStep(max), top = Math.max(step * Math.ceil(max / step), step);
     var y = function (v) { return T + ph - v * ph / top; };
 
-    var out = '<svg class="dynsvg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + dynEsc(DYN_METRICS[metric]) + ' по неделям">';
+    var out = '<svg class="dynsvg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + dynEsc(DYN_METRICS[metric]) + ' by week">';
     for (var v = 0; v <= top; v += step) {
       out += '<line class="dgrid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/>' +
         '<text class="dax" x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + v + '</text>';
     }
-    if (max === 0) out += '<text class="dax" x="' + (W / 2) + '" y="' + (T + ph / 2) + '" text-anchor="middle">Нет таких ответов</text>';
+    if (max === 0) out += '<text class="dax" x="' + (W / 2) + '" y="' + (T + ph / 2) + '" text-anchor="middle">No such answers</text>';
 
     var slot = pw / Math.max(model.weeks.length, 1), bw = Math.min(52, slot * 0.66);
     model.weeks.forEach(function (w, k) {

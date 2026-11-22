@@ -100,22 +100,22 @@ async function mockApi(route) {
   await page.goto('http://127.0.0.1:8765/?setup=' + CODE);
   await page.waitForSelector('text=Английский');
   assert.ok(!page.url().includes('setup='), 'код настройки должен исчезнуть из адреса');
-  assert.ok((await text('#status')).includes('Не отправлено: 0'));
+  assert.ok((await text('#status')).includes('Not sent: 0'));
   let dash = await text('#view');
-  assert.ok(dash.includes('Задания на сегодня') && dash.includes('0 из 3'), 'дашборд: сегодня 0 из 3');
-  assert.ok(dash.includes('долг 3') || dash.includes('3 задания'), 'дашборд: долг 3');
-  assert.ok(dash.includes('Слова: не делали 2 дня подряд'), 'дашборд: слова не делали 2 дня — красным: ' + dash.slice(0, 250));
-  assert.ok(await page.locator('.links button.red:has-text("📚 Слова")').count() === 1, 'кнопка слов красная');
-  assert.ok(dash.includes('Нужно выполнить') && /Нужно выполнить[\s\S]*слова: не делали 2 дня подряд/.test(dash), 'на кнопке долга: слова — пропущенные дни');
-  assert.ok(!dash.includes('📱 Задания в приложении') && !dash.includes('📖 Задания в книжке'), 'значки по предметам: «в книжке» выключена');
-  assert.ok((await text('#nav')).includes('Долг'));
+  assert.ok(dash.includes('Tasks for today') && dash.includes('0 of 3'), 'дашборд: сегодня 0 из 3');
+  assert.ok(dash.includes('overdue 3') || dash.includes('3 tasks'), 'дашборд: долг 3');
+  assert.ok(dash.includes('Words: not done for 2 days in a row'), 'дашборд: слова not done 2 дня — красным: ' + dash.slice(0, 250));
+  assert.ok(await page.locator('.links button.red:has-text("📚 Words")').count() === 1, 'кнопка слов красная');
+  assert.ok(dash.includes('To do') && /To do[\s\S]*words: not done for 2 days in a row/.test(dash), 'на кнопке долга: слова — пропущенные дни');
+  assert.ok(!dash.includes('📱 Tasks in the app') && !dash.includes('📖 Tasks in the book'), 'значки по предметам: «в книжке» выключена');
+  assert.ok((await text('#nav')).includes('To do'));
   await page.click('#nav [data-tab=upcoming]');
   const up = await text('#view');
-  assert.ok(up.includes('📚 Слова — каждый день'), 'ближайшие: блок слов');
-  assert.ok(up.includes('Завтра') && up.includes('3 задания') && up.includes('Решить заранее (3)'), 'ближайшие: завтра 3 задания');
-  assert.ok(up.includes('В свободное время') && up.includes('Осталось 15 заданий') && up.includes('Решить 10'), 'свободное время: 24 − 9 выданных = 15');
+  assert.ok(up.includes('📚 Words — every day'), 'ближайшие: блок слов');
+  assert.ok(up.includes('Tomorrow') && up.includes('3 tasks') && up.includes('Solve ahead (3)'), 'ближайшие: завтра 3 задания');
+  assert.ok(up.includes('In your free time') && up.includes('15 tasks left') && up.includes('Solve 10'), 'свободное время: 24 − 9 выданных = 15');
   await page.click('#nav [data-tab=practice]');
-  assert.ok((await text('#view')).includes('Решено 0 из 24'));
+  assert.ok((await text('#view')).includes('Solved 0 of 24'));
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => caches.keys().then(k => k.length > 0));
   ok('настройка по ссылке, задания скачаны, код убран из адреса, оболочка закэширована');
@@ -124,28 +124,28 @@ async function mockApi(route) {
   netDown = true; await context.setOffline(true);
   await page.reload();
   await page.waitForSelector('text=Английский');
-  assert.ok((await text('#status')).includes('Нет сети'));
+  assert.ok((await text('#status')).includes('Offline'));
   await page.click('#nav [data-tab=schedule]');
   const sched = await text('#view');
-  assert.ok(sched.includes('📚 Слова · 10 мин') && sched.includes('в любое время дня'), 'в расписании есть блок «Слова»');
-  assert.ok(sched.includes('16:00–17:00 · Английский') && !sched.includes('📱 Задания в приложении') && !sched.includes('📖 Задания в книжке'), 'расписание офлайн: плашка «в книжке» выключена');
+  assert.ok(sched.includes('📚 Words · 10 min') && sched.includes('any time of day'), 'the schedule has the Words block');
+  assert.ok(sched.includes('16:00–17:00 · Английский') && !sched.includes('📱 Tasks in the app') && !sched.includes('📖 Tasks in the book'), 'расписание офлайн: плашка «в книжке» выключена');
   await page.click('#nav [data-tab=today]');
-  assert.ok((await text('#view')).includes('Сделано 0 из 3'));
+  assert.ok((await text('#view')).includes('Done 0 of 3'));
   await page.click('#nav [data-tab=practice]');
   ok('без сети приложение открывается из кэша, задания на месте');
 
   // Сначала — «Задания на сегодня»: первые два задания решаются оттуда (тема и устройство те же)
   await page.click('#nav [data-tab=today]');
-  await page.click('button:has-text("Начать (3)")');
+  await page.click('button:has-text("Start (3)")');
   assert.ok((await text('.q')).includes('She ___ her homework already'));
   await page.click('#opts button:has-text("has finished")');
-  assert.ok((await text('#fb')).includes('Верно'));
+  assert.ok((await text('#fb')).includes('Correct'));
   await page.click('#next');
   await page.click('#opts button:has-text("was")');
-  assert.ok((await text('#fb')).includes('Правильный ответ: have been'));
+  assert.ok((await text('#fb')).includes('Correct answer: have been'));
   await page.click('#next');
   await page.click('#quit');
-  assert.ok((await text('#view')).includes('Сделано 2 из 3'), 'сегодня 2 из 3 после двух ответов');
+  assert.ok((await text('#view')).includes('Done 2 of 3'), 'сегодня 2 из 3 после двух ответов');
   await page.click('#nav [data-tab=practice]');
   await page.click('button[data-mode=new]');
   // пропустим до первого fill: ещё 10 choice
@@ -153,18 +153,18 @@ async function mockApi(route) {
   // задание 13 (fill, верно, альтернативная форма)
   await page.fill('#ans', "Haven't finished.");
   await page.click('#check');
-  assert.ok((await text('#fb')).includes('Верно'));
+  assert.ok((await text('#fb')).includes('Correct'));
   await page.click('#next');
-  assert.ok((await text('#status')).includes('Не отправлено: 13'));
-  ok('13 ответов без сети сохранены на устройстве, счётчик «Не отправлено: 13», объяснения показываются');
+  assert.ok((await text('#status')).includes('Not sent: 13'));
+  ok('13 ответов без сети сохранены на устройстве, счётчик «Not sent: 13», объяснения показываются');
   await page.click('#quit');
-  assert.ok((await text('#view')).includes('Решено 13 из 24'));
+  assert.ok((await text('#view')).includes('Solved 13 of 24'));
   // задания на сегодня (1–3) и долг (4–6) решены в тренировке — экраны пересчитались сразу, без сети
   await page.click('#nav [data-tab=today]');
-  assert.ok((await text('#view')).includes('Сделано 3 из 3'), 'сегодня 3 из 3');
+  assert.ok((await text('#view')).includes('Done 3 of 3'), 'сегодня 3 из 3');
   await page.click('#nav [data-tab=debt]');
-  assert.ok((await text('#view')).includes('Долга нет'), 'долг закрыт решением');
-  assert.ok((await text('#view')).includes('Слова: не делали 2 дня подряд'), 'экран долга: слова красным');
+  assert.ok((await text('#view')).includes('Nothing overdue'), 'долг закрыт решением');
+  assert.ok((await text('#view')).includes('Words: not done for 2 days in a row'), 'экран долга: слова красным');
   await page.click('#nav [data-tab=practice]');
   assert.strictEqual(attemptsSheet.length, 0, 'без сети на сервер ничего не должно уйти');
 
@@ -172,21 +172,21 @@ async function mockApi(route) {
   await page.reload();
   await page.waitForSelector('text=Английский');
   await page.click('#nav [data-tab=practice]');
-  await page.waitForSelector('text=Решено 13 из 24');
-  assert.ok((await text('#status')).includes('Не отправлено: 13'));
+  await page.waitForSelector('text=Solved 13 of 24');
+  assert.ok((await text('#status')).includes('Not sent: 13'));
   ok('очередь переживает перезапуск приложения');
 
   // 4. Сеть появилась, но ответ сервера потерялся: ответы дойдут один раз, без дублей
   netDown = false; await context.setOffline(false);
   dropNextSyncResponse = true;
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await page.waitForFunction(() => document.getElementById('status').innerText.includes('Не удалось синхронизировать'), null, { timeout: 8000 });
+  await page.waitForFunction(() => document.getElementById('status').innerText.includes('Could not sync'), null, { timeout: 8000 });
   assert.strictEqual(attemptsSheet.length, 13, 'сервер записал, но приложение этого не узнало');
-  assert.ok((await text('#status')).includes('Не отправлено: 13'));
+  assert.ok((await text('#status')).includes('Not sent: 13'));
   ok('потерянный ответ сервера: очередь сохранена, ошибка показана');
 
   await page.click('#syncBtn');
-  await page.waitForFunction(() => document.getElementById('status').innerText.includes('Не отправлено: 0'), null, { timeout: 8000 });
+  await page.waitForFunction(() => document.getElementById('status').innerText.includes('Not sent: 0'), null, { timeout: 8000 });
   assert.strictEqual(attemptsSheet.length, 13, 'повторная отправка не должна создавать дубли');
   ok('повторная отправка: 13 строк в Attempts, дублей нет, очередь пуста');
 
@@ -200,17 +200,17 @@ async function mockApi(route) {
   ok('is_correct посчитан сервером (верно/неверно/альтернативный ответ), устройство записано');
 
   // 6. Продолжение: решены 13, остальные 11 — «Продолжить»
-  await page.waitForSelector('button:has-text("Продолжить (11 заданий)")');
-  await page.click('button:has-text("Повторить ошибки")');
+  await page.waitForSelector('button:has-text("Continue (11 tasks)")');
+  await page.click('button:has-text("Repeat mistakes")');
   assert.ok((await text('.q')).includes('London'));
-  ok('«Повторить ошибки» открывает решённые с ошибкой задания');
+  ok('«Repeat mistakes» открывает решённые с ошибкой задания');
 
   // «Сложное — на повтор»: отметка при верном ответе делает задание ошибкой и уходит в очередь служебным ответом
-  const qBefore = Number((await text('#status')).match(/Не отправлено: (\d+)/)[1]);
+  const qBefore = Number((await text('#status')).match(/Not sent: (\d+)/)[1]);
   await page.locator('#opts button').first().click();
   await page.click('#flag');
-  assert.ok((await text('#fb')).length > 0 && (await text('#flag')).includes('Отмечено на повтор'), 'кнопка «на повтор» меняет состояние');
-  await page.waitForFunction(n => document.getElementById('status').textContent.includes('Не отправлено: ' + n), qBefore + 2);
+  assert.ok((await text('#fb')).length > 0 && (await text('#flag')).includes('Marked for repeat'), 'кнопка «на повтор» меняет состояние');
+  await page.waitForFunction(n => document.getElementById('status').textContent.includes('Not sent: ' + n), qBefore + 2);
   ok('кнопка «Сложное — на повтор»: ответ + отметка в очереди (' + (qBefore + 2) + ')');
 
   // 7. Неверный токен
@@ -223,21 +223,21 @@ async function mockApi(route) {
   await page.click('[data-sub=BIO]');
   assert.ok(await page.locator('svg.dynsvg rect').count() < allRects, 'фильтр по предмету');
   await page.click('[data-met=rep]');
-  assert.ok((await text('#view')).includes('Повторы по неделям'), 'переключатель метрики');
+  assert.ok((await text('#view')).includes('Repeats by week'), 'переключатель метрики');
   ok('вкладка «Динамика»: диаграмма и фильтр по предмету');
 
   // 8. Слова: вкладка, карточки офлайн, своё слово, синхронизация
   await page.click('#nav [data-tab=words]');
   let wv = await text('#view');
-  assert.ok(wv.includes('Всего слов') && wv.includes('Начать ('), 'вкладка «Слова»: сводка и кнопка начала: ' + wv.slice(0, 200));
+  assert.ok(wv.includes('Total words') && wv.includes('Start ('), 'вкладка «Слова»: сводка и кнопка начала: ' + wv.slice(0, 200));
   // язык блока: только английские — одно слово; «вперемешку» — все
   await page.click('[data-wl=en]');
   await page.waitForSelector('[data-wl=en][aria-pressed=true]');
-  assert.ok((await text('#view')).includes('Начать (1)'), 'английские: одна карточка');
+  assert.ok((await text('#view')).includes('Start (1)'), 'английские: одна карточка');
   assert.ok(await page.locator('[data-wl=en][aria-pressed=true]').count() === 1);
   await page.click('[data-wl=""]');
   await page.waitForSelector('[data-wl=""][aria-pressed=true]');
-  assert.ok(!(await text('#view')).includes('Начать (1)'), 'вперемешку: все слова');
+  assert.ok(!(await text('#view')).includes('Start (1)'), 'вперемешку: все слова');
   netDown = true; await context.setOffline(true);
   await page.click('button[data-w=start]');
   let answered = 0;
@@ -247,17 +247,17 @@ async function mockApi(route) {
     else if (await page.locator('#flip').count()) { await page.click('#flip'); await page.click('#knew'); }
     answered++;
     await page.click('#next');
-    if (await page.locator('text=Слова на сегодня — готово').count()) break;
+    if (await page.locator('text=Words for today — done').count()) break;
   }
   assert.ok(answered >= 5, 'отвечено карточек: ' + answered);
-  assert.ok(await page.locator('text=Слова на сегодня — готово').count() === 1, 'экран «готово»');
+  assert.ok(await page.locator('text=Words for today — done').count() === 1, 'экран «готово»');
   await page.click('#home');
   assert.strictEqual(vocabEvents.length, 0, 'без сети события слов не уходят');
   ok('слова: ' + answered + ' карточек пройдено без сети');
   // слова — обязательная часть дня: видны на дашборде, отмечаются сделанными, учитываются в счётчике «Сегодня»
   await page.click('#nav [data-tab=home]');
   const hv = await text('#view');
-  assert.ok(!hv.includes('не делали') && hv.includes('📚 Слова на сегодня') && hv.includes('✓ сделано'), 'дашборд: слова сделаны: ' + hv.slice(0, 200));
+  assert.ok(!hv.includes('not done') && hv.includes('📚 Words for today') && hv.includes('✓ done'), 'дашборд: слова сделаны: ' + hv.slice(0, 200));
   assert.ok((await text('#nav')).includes('4/4'), 'счётчик «Сегодня»: 3 задания + слова = 4/4: ' + (await text('#nav')));
   ok('слова на дашборде и в счётчике дня как обязательная часть');
   await page.click('#nav [data-tab=words]');
@@ -271,21 +271,21 @@ async function mockApi(route) {
   await page.fill('#wTl', 'ленивый');
   await page.fill('#wEx', 'O çok __tembel__.');
   await page.click('#wSave');
-  await page.waitForSelector('text=Добавлено: tembel', { timeout: 5000 });
-  assert.ok((await text('#view')).includes('Добавлено: tembel'), 'слово добавлено: ' + (await text('#view')).slice(0, 300));
+  await page.waitForSelector('text=Added: tembel', { timeout: 5000 });
+  assert.ok((await text('#view')).includes('Added: tembel'), 'слово добавлено: ' + (await text('#view')).slice(0, 300));
   await page.fill('#wTerm', 'tembel'); await page.fill('#wTl', 'ленивый');
   await page.click('#wSave');
   await page.waitForSelector('.err', { timeout: 5000 });
   assert.ok(await page.locator('.err').count() >= 1, 'дубль отклонён');
   await page.evaluate(() => document.getElementById('wBack').click());    // экран перерисовывается при каждой ошибке — клик по актуальной кнопке
-  await page.waitForSelector('text=Всего слов');
+  await page.waitForSelector('text=Total words');
   assert.ok((await text('#view')).includes('tembel'), 'своё слово видно в списке сразу, без сети');
   ok('своё слово добавлено офлайн, дубль отклонён');
 
   // сеть вернулась: события и слово уходят один раз
   netDown = false; await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await page.waitForFunction(() => /Не отправлено: 0/.test(document.getElementById('status').innerText), null, { timeout: 10000 }).catch(async e => { throw new Error('статус: ' + (await text('#status')) + ' | rejected: ' + JSON.stringify(vocabRes)); });
+  await page.waitForFunction(() => /Not sent: 0/.test(document.getElementById('status').innerText), null, { timeout: 10000 }).catch(async e => { throw new Error('статус: ' + (await text('#status')) + ' | rejected: ' + JSON.stringify(vocabRes)); });
   assert.ok(vocabEvents.length >= answered, 'события слов на сервере: ' + vocabEvents.length);
   assert.ok(vocabWords.some(w => w.t === 'tembel' && w.ru === 'ленивый'), 'слово ребёнка на сервере, перевод в ru');
   const evCount = vocabEvents.length;
@@ -304,19 +304,19 @@ async function mockApi(route) {
   assert.strictEqual(await page.inputValue('#wTerm'), 'sabırlı', 'синхронизация стёрла набранное слово');
   assert.strictEqual(await page.inputValue('#wTl'), 'терпеливый');
   await page.evaluate(() => document.getElementById('wBack').click());
-  await page.waitForSelector('text=Всего слов');
+  await page.waitForSelector('text=Total words');
   ok('форма «Добавить слово» переживает фоновую синхронизацию');
 
   // Динамика: слова по неделям, турецкие и английские отдельно
   await page.click('#nav [data-tab=dynamics]');
   const dv = await text('#view');
-  assert.ok(dv.includes('Слова по неделям') && dv.includes('Турецкие:') && dv.includes('Английские:'), 'динамика: блок слов');
-  assert.ok(dv.includes('Эта неделя.') && /Турецкие:\s*\d+ карточ/.test(dv), 'динамика: сводка недели');
+  assert.ok(dv.includes('Words by week') && dv.includes('Turkish:') && dv.includes('English:'), 'динамика: блок слов');
+  assert.ok(dv.includes('This week.') && /Turkish:\s*\d+ cards/.test(dv), 'динамика: сводка недели');
   ok('динамика по неделям: блок «Слова» (турецкие и английские отдельно)');
 
   // «Слова в задании»: открытие — событие lookup
   await page.click('#nav [data-tab=practice]');
-  await page.click('button[data-mode=new], button:has-text("Продолжить")');
+  await page.click('button[data-mode=new], button:has-text("Continue")');
   if (await page.locator('#taskWords').count()) {
     const before = vocabEvents.length;
     await page.click('#taskWords summary');

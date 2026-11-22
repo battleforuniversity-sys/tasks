@@ -200,11 +200,11 @@
     var clean = function (v, max) { return String(v === null || v === undefined ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max); };
     var lang = input.lang === 'en' ? 'en' : input.lang === 'tr' ? 'tr' : '';
     var term = clean(input.term, 80), tl = clean(input.translation, 120), example = clean(input.example, 300);
-    if (!lang) return { ok: false, error: 'Выберите язык слова' };
-    if (!term) return { ok: false, error: 'Впишите слово' };
-    if (!tl) return { ok: false, error: lang === 'tr' ? 'Впишите перевод по-русски' : 'Впишите перевод по-турецки' };
+    if (!lang) return { ok: false, error: 'Choose the language of the word' };
+    if (!term) return { ok: false, error: 'Enter the word' };
+    if (!tl) return { ok: false, error: lang === 'tr' ? 'Enter the Russian translation' : 'Enter the Turkish translation' };
     var dup = (existing || []).filter(function (w) { return w.l === lang && normalizeAnswer(w.t) === normalizeAnswer(term); })[0];
-    if (dup) return { ok: false, error: 'Такое слово уже есть', duplicate: dup };
+    if (dup) return { ok: false, error: 'This word already exists', duplicate: dup };
     var hex = makeAttemptId().slice(0, 22);
     var word = { id: 'c_' + hex, t: term, l: lang, tr: lang === 'en' ? tl : '', ru: lang === 'tr' ? tl : '', en: '', pos: '',
       ex: example, xt: '', subj: '', task: '', src: 'child' };

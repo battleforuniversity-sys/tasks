@@ -62,7 +62,7 @@
   // Рисунок к заданию: файл лежит в папке img/ рядом с приложением (GitHub Pages) и кэшируется для офлайна.
   function figure(task) {
     if (!task.img || !/^[A-Za-z0-9_.-]+$/.test(task.img)) return '';
-    return '<div class="fig"><img src="img/' + esc(task.img) + '" alt="Рисунок к заданию" onerror="this.parentNode.className=\'fig miss\';this.parentNode.textContent=\'Рисунок не загрузился. Откройте приложение с интернетом.\'"></div>';
+    return '<div class="fig"><img src="img/' + esc(task.img) + '" alt="Picture for the task" onerror="this.parentNode.className=\'fig miss\';this.parentNode.textContent=\'The picture did not load. Open the app while online.\'"></div>';
   }
   // Скачивает рисунки заранее, пока есть интернет: service worker кладёт их в кэш.
   function prefetchImages(pack) {
@@ -76,8 +76,7 @@
     } catch (e) { /* без рисунков приложение работает */ }
   }
   function plural(n, a, b, c) {
-    var x = Math.abs(n) % 100, y = x % 10;
-    return (x > 10 && x < 20) ? c : y === 1 ? a : (y >= 2 && y <= 4) ? b : c;
+    return Math.abs(n) === 1 ? a : c;   // English: one / many
   }
   function deviceName() {
     var ua = navigator.userAgent || '';
@@ -95,7 +94,7 @@
     try {
       var start = location.origin + location.pathname + '?setup=' + code;
       var manifest = {
-        name: 'Задания', short_name: 'Задания', start_url: start, scope: location.origin + location.pathname.replace(/[^/]*$/, ''),
+        name: 'Tasks', short_name: 'Tasks', start_url: start, scope: location.origin + location.pathname.replace(/[^/]*$/, ''),
         display: 'standalone', background_color: '#f6f5f1', theme_color: '#2f5d9e',
         icons: [{ src: new URL('icon-192.png', location.href).href, sizes: '192x192', type: 'image/png' },
                 { src: new URL('icon-512.png', location.href).href, sizes: '512x512', type: 'image/png' }]
@@ -121,15 +120,15 @@
   }
 
   function renderSetup(message) {
-    titleEl.textContent = 'Настройка';
-    view.innerHTML = '<div class="card"><h2>Подключение</h2>' +
-      '<p class="muted">Вставьте код настройки (его показывает родитель). Нужно один раз, при подключении к интернету.</p>' +
+    titleEl.textContent = 'Setup';
+    view.innerHTML = '<div class="card"><h2>Connect</h2>' +
+      '<p class="muted">Paste the setup code (a parent will show it). Needed once, while online.</p>' +
       (message ? '<p class="err" role="alert">' + esc(message) + '</p>' : '') +
-      '<input type="text" id="code" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Код настройки">' +
-      '<div class="row"><button class="primary" id="saveCode">Подключить</button></div></div>';
+      '<input type="text" id="code" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Setup code">' +
+      '<div class="row"><button class="primary" id="saveCode">Connect</button></div></div>';
     document.getElementById('saveCode').onclick = function () {
       var value = document.getElementById('code').value;
-      saveSetup(value).then(function (ok) { ok ? start() : renderSetup('Код не подошёл. Скопируйте его целиком.'); });
+      saveSetup(value).then(function (ok) { ok ? start() : renderSetup('The code did not work. Copy it in full.'); });
     };
   }
 
@@ -152,12 +151,12 @@
 
   function renderStatus() {
     var online = navigator.onLine;
-    var html = '<span class="pill ' + (online ? 'ok' : 'warn') + '">' + (online ? 'Есть сеть' : 'Нет сети') + '</span>';
-    html += '<span class="pill">v19</span>';
-    html += '<span class="pill ' + (state.queued + state.vq.length + state.vnew.length ? 'warn' : '') + '">Не отправлено: ' + (state.queued + state.vq.length + state.vnew.length) + '</span>';
+    var html = '<span class="pill ' + (online ? 'ok' : 'warn') + '">' + (online ? 'Online' : 'Offline') + '</span>';
+    html += '<span class="pill">v20</span>';
+    html += '<span class="pill ' + (state.queued + state.vq.length + state.vnew.length ? 'warn' : '') + '">Not sent: ' + (state.queued + state.vq.length + state.vnew.length) + '</span>';
     if (state.syncError) html += '<span class="pill warn" role="alert">' + esc(state.syncError) + '</span>';
-    else if (state.lastSync) html += '<span class="pill">Синхронизировано в ' + esc(clock(state.lastSync)) + '</span>';
-    html += '<button id="syncBtn"' + (state.syncing ? ' disabled' : '') + '>' + (state.syncing ? 'Синхронизация…' : 'Синхронизировать') + '</button>';
+    else if (state.lastSync) html += '<span class="pill">Synced at ' + esc(clock(state.lastSync)) + '</span>';
+    html += '<button id="syncBtn"' + (state.syncing ? ' disabled' : '') + '>' + (state.syncing ? 'Syncing…' : 'Sync') + '</button>';
     statusEl.innerHTML = html;
     document.getElementById('syncBtn').onclick = function () { syncNow(true); };
   }
@@ -183,7 +182,7 @@
         body: JSON.stringify({ token: cfg.token, device: deviceName(), attempts: queue, vocab_events: vq,
           vocab_new: vn.map(function (w) { return { word_id: w.id, lang: w.l, term: w.t, translation: w.l === 'tr' ? w.ru : w.tr, example: w.ex }; }) })
       }).then(function (res) {
-        if (res.ok !== true) throw new Error(res.error === 'forbidden' ? 'forbidden' : 'Сервер отклонил запрос');
+        if (res.ok !== true) throw new Error(res.error === 'forbidden' ? 'forbidden' : 'The server rejected the request');
         var v = res.vocab;
         var done = queueDelete(L.idsToRemove(res));
         if (v && v.ok === true) {
@@ -198,7 +197,7 @@
     }).then(function () {
       return fetchJson(cfg.api + '?action=pack&token=' + encodeURIComponent(cfg.token));
     }).then(function (res) {
-      if (res.ok !== true) throw new Error(res.error === 'forbidden' ? 'forbidden' : 'Сервер не отдал задания');
+      if (res.ok !== true) throw new Error(res.error === 'forbidden' ? 'forbidden' : 'The server did not return the tasks');
       state.pack = res.pack;
       prefetchImages(res.pack);
       return kvSet('pack', res.pack);
@@ -211,8 +210,8 @@
       state.lastSync = new Date().toISOString();
       return kvSet('lastSync', state.lastSync);
     }).catch(function (e) {
-      state.syncError = e.message === 'forbidden' ? 'Неверный код настройки'
-        : (navigator.onLine ? 'Не удалось синхронизировать' : 'Нет сети: ответы сохранены на устройстве');
+      state.syncError = e.message === 'forbidden' ? 'Wrong setup code'
+        : (navigator.onLine ? 'Could not sync' : 'No connection: answers are saved on this device');
     }).then(function () {
       state.syncing = false;
       return refreshCounters();
@@ -263,17 +262,17 @@
     if (!exam || !exam.date) return null;
     var a = today().split('-').map(Number), b = String(exam.date).split('-').map(Number);
     var days = Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86400000);
-    if (days < 0) return { headline: 'Экзамен прошёл', sub: '' };
-    if (days === 0) return { headline: 'Сегодня', sub: 'Первый день экзамена' };
+    if (days < 0) return { headline: 'The exam has passed', sub: '' };
+    if (days === 0) return { headline: 'Today', sub: 'First day of the exam' };
     var w = Math.floor(days / 7), r = days % 7, parts = [];
-    if (w) parts.push(w + ' ' + plural(w, 'неделя', 'недели', 'недель'));
-    if (r) parts.push(r + ' ' + plural(r, 'день', 'дня', 'дней'));
-    return { headline: parts.join(' '), sub: 'Всего ' + days + ' ' + plural(days, 'день', 'дня', 'дней') };
+    if (w) parts.push(w + ' ' + plural(w, 'week', 'weeks', 'weeks'));
+    if (r) parts.push(r + ' ' + plural(r, 'day', 'days', 'days'));
+    return { headline: parts.join(' '), sub: 'Total ' + days + ' ' + plural(days, 'day', 'days', 'days') };
   }
 
   function duration(min) {
     var h = Math.floor(min / 60), m = min % 60;
-    return (h ? h + ' ч' : '') + (h && m ? ' ' : '') + (m || !h ? m + ' мин' : '');
+    return (h ? h + ' h' : '') + (h && m ? ' ' : '') + (m || !h ? m + ' min' : '');
   }
 
   function tbar(green, red, label) {
@@ -322,15 +321,15 @@
     return L.wordsMissedDays(today(), dates);
   }
 
-  function missedText(n) { return 'не делали ' + n + ' ' + plural(n, 'день', 'дня', 'дней') + ' подряд'; }
+  function missedText(n) { return 'not done for ' + n + ' ' + plural(n, 'day', 'days', 'days') + ' in a row'; }
 
   /** Красная пометка «слова не делали N дней подряд» — для экрана долга и кнопки долга; '' если пропусков нет или слова уже сделаны. */
   function wordsDebtNote() {
     var wd = wordsDay(), m = wordsMissed();
-    return wd.required && !wd.done && m >= 1 ? 'слова: ' + missedText(m).replace('не делали', 'не делали') : '';
+    return wd.required && !wd.done && m >= 1 ? 'words: ' + missedText(m) : '';
   }
 
-  /** Плашка «📖 Задания в книжке» выключена на сервере (SHOW_BOOK_BADGE); код сохранён. */
+  /** Плашка «📖 Tasks in the book» выключена на сервере (SHOW_BOOK_BADGE); код сохранён. */
   function showApp() { return !!(state.pack && state.pack.flags && state.pack.flags.showApp); }
   function showBook() { return !!(state.pack && state.pack.flags && state.pack.flags.showBook); }
 
@@ -339,28 +338,28 @@
     if (!wd.required) return '';
     var miss = wordsMissed();
     if (miss >= 1 && !wd.done) {      // пропущенные дни — красным, как долг
-      return '<button data-go="words" class="red">📚 Слова: ' + esc(missedText(miss)) + '<br><small>' + wd.n + ' из ' + WORDS_DAILY + ' сегодня · осталось ' + wd.left + '</small></button>';
+      return '<button data-go="words" class="red">📚 Words: ' + esc(missedText(miss)) + '<br><small>' + wd.n + ' of ' + WORDS_DAILY + ' today · ' +  + wd.left + '</small></button>';
     }
-    return '<button data-go="words"' + (wd.done ? '' : ' class="primary"') + '>📚 Слова на сегодня<br><small>' +
-      (wd.done ? '✓ сделано (' + wd.n + ' карточек)' : wd.n + ' из ' + WORDS_DAILY + ' · осталось ' + wd.left) + '</small></button>';
+    return '<button data-go="words"' + (wd.done ? '' : ' class="primary"') + '>📚 Words for today<br><small>' +
+      (wd.done ? '✓ done (' + wd.n + ' cards)' : wd.n + ' of ' + WORDS_DAILY + ' · ' + wd.left + ' left') + '</small></button>';
   }
 
   function wordsCardHtml() {
     var pl = wordsPlan(false);
-    var langNames = { '': 'Вперемешку', tr: 'Турецкие', en: 'English' };
-    var chips = '<div class="chips" role="group" aria-label="Какие слова повторять">' + ['', 'tr', 'en'].map(function (k) {
+    var langNames = { '': 'Mixed', tr: 'Turkish', en: 'English' };
+    var chips = '<div class="chips" role="group" aria-label="Which words to review">' + ['', 'tr', 'en'].map(function (k) {
       return '<button data-wl="' + k + '"' + (state.wordsLang === k ? ' aria-pressed="true"' : '') + '>' + langNames[k] + '</button>';
     }).join('') + '</div>';
     var body = pl.pool.length
-      ? (pl.count ? 'Повторить: ' + pl.session.due.length + ' · новых: ' + pl.session.fresh.length : '✓ На сегодня всё')
-      : 'Слов пока нет — добавьте своё или дождитесь слов из заданий';
+      ? (pl.count ? 'To review: ' + pl.session.due.length + ' · new: ' + pl.session.fresh.length : '✓ All done for today')
+      : 'No words yet — add your own or wait for words from the tasks';
     var wd = wordsDay(), wm = wordsMissed();
-    return '<section class="card" id="wordsCard"><h2>' + (wd.done ? '✓ Слова на сегодня сделаны' : '📚 Слова — обязательно каждый день, 10 минут') + '</h2>' +
-      tbar(pct(Math.min(pl.done, WORDS_DAILY), WORDS_DAILY), 0, 'Слов сегодня') +
-      (wm >= 1 && !wd.done ? '<div class="debt" role="status">⏳ Слова ' + esc(missedText(wm)) + '</div>' : '') +
-      '<div class="muted">Сделано ' + Math.min(pl.done, WORDS_DAILY) + ' из ' + WORDS_DAILY + ' · ' + esc(body) + '</div>' + chips +
-      '<div class="row">' + (pl.count ? '<button class="primary" data-w="start">Начать (' + pl.count + ')</button>' : '') +
-      '<button data-w="open">Все слова</button></div></section>';
+    return '<section class="card" id="wordsCard"><h2>' + (wd.done ? '✓ Words for today are done' : '📚 Words — every day, 10 minutes (required)') + '</h2>' +
+      tbar(pct(Math.min(pl.done, WORDS_DAILY), WORDS_DAILY), 0, 'Words today') +
+      (wm >= 1 && !wd.done ? '<div class="debt" role="status">⏳ Words ' + esc(missedText(wm)) + '</div>' : '') +
+      '<div class="muted">Done ' + Math.min(pl.done, WORDS_DAILY) + ' of ' + WORDS_DAILY + ' · ' + esc(body) + '</div>' + chips +
+      '<div class="row">' + (pl.count ? '<button class="primary" data-w="start">Start (' + pl.count + ')</button>' : '') +
+      '<button data-w="open">All words</button></div></section>';
   }
   function bindWordsCard() {
     Array.prototype.forEach.call(view.querySelectorAll('[data-w]'), function (b) {
@@ -375,25 +374,25 @@
   }
 
   function renderWords() {
-    titleEl.textContent = 'Слова';
+    titleEl.textContent = 'Words';
     var pl = wordsPlan(false), words = pl.words, states = pl.states;
     var st = L.vocabStatsLang(words, states, today(), state.wordsLang);
     var stTr = L.vocabStatsLang(words, states, today(), 'tr'), stEn = L.vocabStatsLang(words, states, today(), 'en');
     var html = wordsCardHtml();
-    html += '<div class="grid"><section class="card"><h2>Всего слов</h2><div class="big">' + st.total + '</div></section>' +
-      '<section class="card"><h2>Учу</h2><div class="big">' + st.learning + '</div><div class="muted">ещё ' + st.fresh + ' новых</div></section>' +
-      '<section class="card"><h2>Выучено</h2><div class="big"><span class="good">' + st.known + '</span></div><div class="muted">ящики 4–5</div></section></div>';
-    html += '<p class="muted" style="margin:0 0 12px">Турецкие: ' + stTr.total + ' · учу ' + stTr.learning + ' · выучено ' + stTr.known +
-      ' &nbsp;|&nbsp; Английские: ' + stEn.total + ' · учу ' + stEn.learning + ' · выучено ' + stEn.known + '</p>';
-    html += '<div class="row" style="margin:0 0 12px"><button class="primary" id="addWord">＋ Добавить своё слово</button>' +
-      (!pl.count && words.length ? '<button id="moreWords">Ещё 10 слов</button>' : '') + '</div>';
+    html += '<div class="grid"><section class="card"><h2>Total words</h2><div class="big">' + st.total + '</div></section>' +
+      '<section class="card"><h2>Learning</h2><div class="big">' + st.learning + '</div><div class="muted">' + st.fresh + ' more new</div></section>' +
+      '<section class="card"><h2>Learned</h2><div class="big"><span class="good">' + st.known + '</span></div><div class="muted">boxes 4–5</div></section></div>';
+    html += '<p class="muted" style="margin:0 0 12px">Turkish: ' + stTr.total + ' · learning ' + stTr.learning + ' · learned ' + stTr.known +
+      ' &nbsp;|&nbsp; English: ' + stEn.total + ' · learning ' + stEn.learning + ' · learned ' + stEn.known + '</p>';
+    html += '<div class="row" style="margin:0 0 12px"><button class="primary" id="addWord">＋ Add my own word</button>' +
+      (!pl.count && words.length ? '<button id="moreWords">10 more words</button>' : '') + '</div>';
 
     var f = state.wordsFilter, q = state.wordsQuery.trim().toLowerCase();
-    var chips = [['all', 'Все'], ['tr', 'Турецкие'], ['en', 'Английские'], ['child', 'Мои'], ['due', 'На повтор']];
-    html += '<div class="chips" role="group" aria-label="Фильтр">' + chips.map(function (c) {
+    var chips = [['all', 'All'], ['tr', 'Turkish'], ['en', 'English'], ['child', 'Mine'], ['due', 'To review']];
+    html += '<div class="chips" role="group" aria-label="Filter">' + chips.map(function (c) {
       return '<button data-f="' + c[0] + '"' + (f === c[0] ? ' aria-pressed="true"' : '') + '>' + c[1] + '</button>';
     }).join('') + '</div>';
-    html += '<input type="text" id="wq" placeholder="Поиск слова" autocomplete="off" autocapitalize="off" aria-label="Поиск слова" value="' + esc(state.wordsQuery) + '" style="margin:0 0 12px">';
+    html += '<input type="text" id="wq" placeholder="Search words" autocomplete="off" autocapitalize="off" aria-label="Search words" value="' + esc(state.wordsQuery) + '" style="margin:0 0 12px">';
 
     var list = words.filter(function (w) {
       if (f === 'tr' && w.l !== 'tr') return false;
@@ -406,11 +405,11 @@
     html += '<div id="wlist">' + list.slice(0, 60).map(function (w) {
       var s = states[w.id], box = s && s.n ? s.b : 0;
       var dots = [1, 2, 3, 4, 5].map(function (i) { return i <= box ? '●' : '○'; }).join('');
-      return '<div class="item home"><div class="t">' + esc(w.t) + ' <span class="muted">' + (w.l === 'tr' ? 'TR' : 'EN') + '</span> <span class="muted" aria-label="Ящик ' + box + ' из 5">' + dots + '</span></div>' +
+      return '<div class="item home"><div class="t">' + esc(w.t) + ' <span class="muted">' + (w.l === 'tr' ? 'TR' : 'EN') + '</span> <span class="muted" aria-label="Box ' + box + ' of 5">' + dots + '</span></div>' +
         '<div class="m">' + esc(L.translations(w).join(' · ')) + '</div>' +
         (w.ex ? '<div class="m">' + rich(w.ex) + (w.xt ? '<br>' + esc(w.xt) : '') + '</div>' : '') + '</div>';
-    }).join('') + (list.length > 60 ? '<p class="muted">Показаны первые 60 из ' + list.length + '. Уточните поиск.</p>' : '') +
-      (!list.length ? '<p class="muted">Ничего не найдено.</p>' : '') + '</div>';
+    }).join('') + (list.length > 60 ? '<p class="muted">Showing the first 60 of ' + list.length + '. Narrow the search.</p>' : '') +
+      (!list.length ? '<p class="muted">Nothing found.</p>' : '') + '</div>';
     view.innerHTML = html;
 
     bindWordsCard();
@@ -432,21 +431,21 @@
   function renderAddWord(message, lang) {
     state.session = null;
     state.editing = true;            // пока открыта форма, фоновая синхронизация не должна стирать набранное
-    titleEl.textContent = 'Новое слово';
+    titleEl.textContent = 'New word';
     lang = lang || state.addLang || 'tr';
     state.addLang = lang;
     document.getElementById('nav').style.display = 'none';
-    view.innerHTML = '<div class="card"><h2>Добавить слово</h2>' +
+    view.innerHTML = '<div class="card"><h2>Add a word</h2>' +
       (message ? '<p class="' + (message.err ? 'err' : 'good') + '" role="status">' + esc(message.text) + '</p>' : '') +
-      '<div class="chips" role="group" aria-label="Язык слова"><button data-l="tr"' + (lang === 'tr' ? ' aria-pressed="true"' : '') + '>Турецкое слово</button>' +
-      '<button data-l="en"' + (lang === 'en' ? ' aria-pressed="true"' : '') + '>Английское слово</button></div>' +
-      '<p class="muted" style="margin:0 0 4px">Слово</p><input type="text" id="wTerm" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Слово">' +
-      '<p class="muted" style="margin:12px 0 4px">' + (lang === 'tr' ? 'Перевод по-русски' : 'Перевод по-турецки') + '</p>' +
-      '<input type="text" id="wTl" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Перевод">' +
-      '<p class="muted" style="margin:12px 0 4px">Предложение с этим словом (по желанию)</p>' +
-      '<input type="text" id="wEx" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Предложение">' +
-      '<p class="muted">Если предложения нет — оставьте пустым: оно появится позже.</p>' +
-      '<div class="row"><button class="primary" id="wSave">Сохранить</button><button id="wBack">Готово</button></div></div>';
+      '<div class="chips" role="group" aria-label="Word language"><button data-l="tr"' + (lang === 'tr' ? ' aria-pressed="true"' : '') + '>Turkish word</button>' +
+      '<button data-l="en"' + (lang === 'en' ? ' aria-pressed="true"' : '') + '>English word</button></div>' +
+      '<p class="muted" style="margin:0 0 4px">Word</p><input type="text" id="wTerm" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Word">' +
+      '<p class="muted" style="margin:12px 0 4px">' + (lang === 'tr' ? 'Translation into Russian' : 'Translation into Turkish') + '</p>' +
+      '<input type="text" id="wTl" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Translation">' +
+      '<p class="muted" style="margin:12px 0 4px">A sentence with this word (optional)</p>' +
+      '<input type="text" id="wEx" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Sentence">' +
+      '<p class="muted">If you have no sentence, leave it empty: one will appear later.</p>' +
+      '<div class="row"><button class="primary" id="wSave">Save</button><button id="wBack">Done</button></div></div>';
     Array.prototype.forEach.call(view.querySelectorAll('[data-l]'), function (b) {
       b.onclick = function () { renderAddWord(null, b.getAttribute('data-l')); };
     });
@@ -458,7 +457,7 @@
       if (!res.ok) return renderAddWordKeep(res.error);
       vnewPut(res.word).then(refreshCounters).then(function () {
         renderStatus();
-        renderAddWord({ text: 'Добавлено: ' + res.word.t + ' ✓' }, lang);
+        renderAddWord({ text: 'Added: ' + res.word.t + ' ✓' }, lang);
         if (navigator.onLine) syncSoon();
       });
     };
@@ -503,28 +502,28 @@
     var card = L.makeCard(item.w, dir, s.pool);
     s.card = card; s.answered = false;
     document.getElementById('nav').style.display = 'none';
-    titleEl.textContent = 'Слова';
+    titleEl.textContent = 'Words';
 
-    var head = '<div class="muted">Слово ' + (s.index + 1) + ' из ' + s.items.length + (item.retry ? ' · повтор' : '') + '</div>' +
+    var head = '<div class="muted">Word ' + (s.index + 1) + ' of ' + s.items.length + (item.retry ? ' · retry' : '') + '</div>' +
       '<div class="bar-p"><i style="width:' + Math.round(s.index * 100 / s.items.length) + '%"></i></div>' +
-      '<div class="muted">' + (card.dir === 'f' ? (item.w.l === 'tr' ? 'Что значит по-русски?' : 'Как это по-турецки?') : (item.w.l === 'tr' ? 'Как это по-турецки?' : 'Как это по-английски?')) + '</div>' +
+      '<div class="muted">' + (card.dir === 'f' ? (item.w.l === 'tr' ? 'What does it mean in Russian?' : 'How do you say it in Turkish?') : (item.w.l === 'tr' ? 'How do you say it in Turkish?' : 'How do you say it in English?')) + '</div>' +
       '<div class="q" lang="' + (card.dir === 'f' ? item.w.l : (item.w.l === 'tr' ? 'ru' : item.w.l === 'en' ? 'tr' : 'ru')) + '">' + esc(card.prompt) + '</div>' +
       (card.sentence ? '<div class="muted" style="margin:-8px 0 14px">' + rich(card.sentence) + '</div>' : '');
 
     if (card.options) {
       view.innerHTML = '<div class="card">' + head + '<div class="opts" id="opts">' +
         card.options.map(function (o, i) { return '<button data-i="' + i + '">' + esc(o) + '</button>'; }).join('') +
-        '</div><div class="row"><button id="dk">Не знаю</button></div><div id="fb"></div></div><div class="row"><button id="quit">Назад</button></div>';
+        '</div><div class="row"><button id="dk">I do not know</button></div><div id="fb"></div></div><div class="row"><button id="quit">Back</button></div>';
       Array.prototype.forEach.call(view.querySelectorAll('#opts button'), function (b) {
         b.onclick = function () { answerWord(Number(b.getAttribute('data-i')), b); };
       });
       document.getElementById('dk').onclick = function () { answerWord(-1, null); };
     } else {
-      view.innerHTML = '<div class="card">' + head + '<div class="row"><button class="primary" id="flip">Показать ответ</button></div><div id="fb"></div></div>' +
-        '<div class="row"><button id="quit">Назад</button></div>';
+      view.innerHTML = '<div class="card">' + head + '<div class="row"><button class="primary" id="flip">Show answer</button></div><div id="fb"></div></div>' +
+        '<div class="row"><button id="quit">Back</button></div>';
       document.getElementById('flip').onclick = function () {
         document.getElementById('flip').parentNode.style.display = 'none';
-        document.getElementById('fb').innerHTML = '<div class="fb"><b>' + esc(card.answer) + '</b></div><div class="row"><button id="knew">Знал</button><button id="didnt">Не знал</button></div>';
+        document.getElementById('fb').innerHTML = '<div class="fb"><b>' + esc(card.answer) + '</b></div><div class="row"><button id="knew">I knew it</button><button id="didnt">I did not know</button></div>';
         document.getElementById('knew').onclick = function () { answerWord(-2, null, true); };
         document.getElementById('didnt').onclick = function () { answerWord(-2, null, false); };
       };
@@ -551,10 +550,10 @@
       document.getElementById('dk').disabled = true;
     }
     var w = item.w;
-    document.getElementById('fb').innerHTML = '<div class="fb ' + (ok ? 'ok' : 'bad') + '" role="status"><b>' + (ok ? 'Верно!' : 'Запомним ещё раз.') + '</b>' +
+    document.getElementById('fb').innerHTML = '<div class="fb ' + (ok ? 'ok' : 'bad') + '" role="status"><b>' + (ok ? 'Correct!' : 'We will repeat it.') + '</b>' +
       '<div><strong>' + esc(w.t) + '</strong> — ' + esc(L.translations(w).join(' · ')) + '</div>' +
       (w.ex ? '<div style="margin-top:6px">' + rich(w.ex) + '</div>' + (w.xt ? '<div class="muted">' + esc(w.xt) + '</div>' : '') : '') + '</div>' +
-      '<div class="row"><button class="primary" id="next">' + (s.index + 1 >= s.items.length ? 'Закончить' : 'Дальше') + '</button></div>';
+      '<div class="row"><button class="primary" id="next">' + (s.index + 1 >= s.items.length ? 'Finish' : 'Next') + '</button></div>';
     var next = document.getElementById('next');
     next.onclick = function () { s.index++; renderWordCard(); };
     next.focus();
@@ -562,10 +561,10 @@
 
   function renderWordsFinish() {
     var s = state.session;
-    titleEl.textContent = 'Готово';
-    view.innerHTML = '<div class="card"><h2>Слова на сегодня — готово!</h2><p>Верно ' + s.correct + ' из ' + s.asked + '.</p>' +
-      '<p class="muted">Ошибочные слова вернутся завтра и в ближайшие дни, выученные — через несколько дней.</p>' +
-      '<div class="row"><button class="primary" id="home">Готово</button></div></div>';
+    titleEl.textContent = 'Done';
+    view.innerHTML = '<div class="card"><h2>Words for today — done!</h2><p>Correct: ' + s.correct + ' of ' + s.asked + '.</p>' +
+      '<p class="muted">Words you missed will come back tomorrow and in the next few days; learned words come back after a few days.</p>' +
+      '<div class="row"><button class="primary" id="home">Done</button></div></div>';
     state.session = null;
     if (!s.extra && state.vdaily.date === today() && !state.vdaily.fin) {       // дневной блок пройден до конца — слова на сегодня сделаны
       state.vdaily.fin = true; kvSet('vdaily', state.vdaily);
@@ -577,7 +576,7 @@
   function taskWordsHtml(task) {
     var ws = L.wordsForTask(allWords(), task.id);
     if (!ws.length) return '';
-    return '<details id="taskWords" style="margin:0 0 14px"><summary>📚 Слова в задании (' + ws.length + ')</summary>' +
+    return '<details id="taskWords" style="margin:0 0 14px"><summary>📚 Words in this task (' + ws.length + ')</summary>' +
       ws.map(function (w) { return '<div class="item home"><div class="t">' + esc(w.t) + '</div><div class="m">' + esc(L.translations(w).join(' · ')) + '</div></div>'; }).join('') + '</details>';
   }
   function bindTaskWords(task) {
@@ -594,7 +593,7 @@
   }
 
   // ------------------------------------------------------------------ навигация
-  var TABS = [['home', 'Дашборд'], ['today', 'Сегодня'], ['upcoming', 'Скоро'], ['debt', 'Долг'], ['schedule', 'Неделя'], ['dynamics', 'Динамика'], ['practice', 'Тренировка'], ['words', 'Слова']];
+  var TABS = [['home', 'Dashboard'], ['today', 'Today'], ['upcoming', 'Upcoming'], ['debt', 'To do'], ['schedule', 'Week'], ['dynamics', 'Trends'], ['practice', 'Practice'], ['words', 'Words']];
 
   function renderNav() {
     document.getElementById('nav').style.display = '';
@@ -611,7 +610,7 @@
       }
       if (t[0] === 'words') {
         var wc = wordsPlan(false).count, wm = wordsMissed();
-        if (wm >= 1 && !wordsDay().done) n = '<span class="n red">' + wm + ' дн.</span>'; else if (wc) n = '<span class="n">' + wc + '</span>';
+        if (wm >= 1 && !wordsDay().done) n = '<span class="n red">' + wm + ' d</span>'; else if (wc) n = '<span class="n">' + wc + '</span>';
       }
       return '<button data-tab="' + t[0] + '"' + (state.tab === t[0] ? ' aria-current="page"' : '') + '>' + t[1] + n + '</button>';
     }).join('');
@@ -631,8 +630,8 @@
       renderAssigned('debt');
       var dn = wordsDebtNote();
       if (dn) {
-        view.insertAdjacentHTML('afterbegin', '<section class="card"><h2 class="debt">📚 Слова</h2><p class="debt">' + esc(dn.charAt(0).toUpperCase() + dn.slice(1)) + '</p>' +
-          '<p class="muted">Пропущенные дни не копятся: слова возвращаются на повторение. Нужно пройти блок на сегодня.</p><div class="row"><button class="primary" data-gw="1">Открыть слова</button></div></section>');
+        view.insertAdjacentHTML('afterbegin', '<section class="card"><h2 class="debt">📚 Words</h2><p class="debt">' + esc(dn.charAt(0).toUpperCase() + dn.slice(1)) + '</p>' +
+          '<p class="muted">Missed days do not pile up: the words come back for review. Finish the block for today.</p><div class="row"><button class="primary" data-gw="1">Open words</button></div></section>');
         var gb = view.querySelector('[data-gw]'); if (gb) gb.onclick = function () { route('words'); };
       }
       return;
@@ -640,7 +639,7 @@
     if (tab === 'upcoming') {
       renderUpcoming();
       if (wordsDay().required) {
-        view.insertAdjacentHTML('afterbegin', '<section class="card"><h2>📚 Слова — каждый день</h2><p class="muted">10 минут карточек, в любое время дня. Это обязательная часть каждого дня.</p></section>');
+        view.insertAdjacentHTML('afterbegin', '<section class="card"><h2>📚 Words — every day</h2><p class="muted">10 minutes of cards, any time of day. This is a required part of every day.</p></section>');
       }
       return;
     }
@@ -652,13 +651,13 @@
 
   // ------------------------------------------------------------------ дашборд
   function renderDashboard() {
-    titleEl.textContent = 'Дашборд';
+    titleEl.textContent = 'Dashboard';
     var home = state.pack && state.pack.home;
     var st = state.pack && state.pack.plan ? liveStats() : null;
 
     if (!state.pack) {
-      view.innerHTML = '<div class="card"><h2>Данных пока нет</h2><p class="muted">' +
-        (navigator.onLine ? 'Нажмите «Синхронизировать» — приложение скачает задания и расписание.' : 'Подключитесь к интернету и нажмите «Синхронизировать».') + '</p></div>';
+      view.innerHTML = '<div class="card"><h2>No data yet</h2><p class="muted">' +
+        (navigator.onLine ? 'Tap “Sync” — the app will download the tasks and the schedule.' : 'Connect to the internet and tap “Sync”.') + '</p></div>';
       return;
     }
 
@@ -666,15 +665,15 @@
     if (st) {
       var up = st.upcoming.reduce(function (n, d) { return n + d.ids.length; }, 0);
       html += '<div class="links">' +
-        '<button data-go="schedule">🗓 Расписание</button>' +
-        '<button data-go="today" class="primary">📱 Задания на сегодня<br><small>' + st.all.todayDone + ' из ' + st.all.today + '</small></button>' +
+        '<button data-go="schedule">🗓 Schedule</button>' +
+        '<button data-go="today" class="primary">📱 Tasks for today<br><small>' + st.all.todayDone + ' of ' + st.all.today + '</small></button>' +
         wordsDashButton() +
-        '<button data-go="debt"' + (st.all.debt || wordsDebtNote() ? ' class="red"' : '') + '>⏳ Нужно выполнить<br><small>' +
-        ((st.all.debt ? st.all.debt + ' ' + plural(st.all.debt, 'задание', 'задания', 'заданий') : (wordsDebtNote() ? '' : 'долга нет')) +
+        '<button data-go="debt"' + (st.all.debt || wordsDebtNote() ? ' class="red"' : '') + '>⏳ To do<br><small>' +
+        ((st.all.debt ? st.all.debt + ' ' + plural(st.all.debt, 'task', 'tasks', 'tasks') : (wordsDebtNote() ? '' : 'nothing overdue')) +
           (wordsDebtNote() ? (st.all.debt ? ' · ' : '') + esc(wordsDebtNote()) : '')) + '</small></button>' +
-        '<button data-go="upcoming">📅 Ближайшие<br><small>' + up + ' ' + plural(up, 'задание', 'задания', 'заданий') + '</small></button></div>';
+        '<button data-go="upcoming">📅 Upcoming<br><small>' + up + ' ' + plural(up, 'task', 'tasks', 'tasks') + '</small></button></div>';
     } else {
-      html += '<div class="links"><button data-go="schedule">🗓 Расписание</button><button data-go="practice">📱 Тренировка</button>' + wordsDashButton() + '</div>';
+      html += '<div class="links"><button data-go="schedule">🗓 Schedule</button><button data-go="practice">📱 Practice</button>' + wordsDashButton() + '</div>';
     }
 
     if (home) {
@@ -682,34 +681,34 @@
       var tk = st ? st.all : home.tasks;
       var accuracy = pct(tk.correct, tk.answered);
       html += '<div class="grid">';
-      if (ex) html += '<section class="card"><h2>' + esc(home.exam.name || 'Экзамен') + '</h2><div class="big">' + esc(ex.headline) + '</div><div class="muted">' + esc(ex.sub) + '</div></section>';
-      html += '<section class="card"><h2>Темы</h2><div class="big"><span class="good">' + home.topics.done + '</span> <small>из ' + home.topics.total + '</small></div>' +
-        tbar(home.topics.percent, 0, 'Пройдено тем') + '</section>';
-      html += '<section class="card"><h2>Задания</h2><div class="big"><span class="good">' + tk.answered + '</span> <small>из ' + tk.total + '</small></div>' +
-        tbar(pct(tk.answered, tk.total), pct(tk.debt, tk.total), 'Решено заданий и долг') +
-        '<div class="muted">Верно ' + accuracy + '% · ' + (tk.debt ? '<span class="debt">долг ' + tk.debt + '</span>' : 'долга нет') + '</div></section>';
+      if (ex) html += '<section class="card"><h2>' + esc(home.exam.name || 'Exam') + '</h2><div class="big">' + esc(ex.headline) + '</div><div class="muted">' + esc(ex.sub) + '</div></section>';
+      html += '<section class="card"><h2>Topics</h2><div class="big"><span class="good">' + home.topics.done + '</span> <small>of ' + home.topics.total + '</small></div>' +
+        tbar(home.topics.percent, 0, 'Topics completed') + '</section>';
+      html += '<section class="card"><h2>Tasks</h2><div class="big"><span class="good">' + tk.answered + '</span> <small>of ' + tk.total + '</small></div>' +
+        tbar(pct(tk.answered, tk.total), pct(tk.debt, tk.total), 'Tasks solved and overdue') +
+        '<div class="muted">Correct ' + accuracy + '% · ' + (tk.debt ? '<span class="debt">overdue ' + tk.debt + '</span>' : 'nothing overdue') + '</div></section>';
       html += '</div>';
 
       home.subjects.forEach(function (s) {
         var sub = st && st.bySubject[s.id] ? st.bySubject[s.id] : s.tasks;
         html += '<section class="card"><h2>' + esc(s.name) + '</h2>' +
-          '<div class="muted">' + (s.current ? 'Тема: ' + esc(s.current.name) : s.state === 'empty' ? 'Программа не загружена' : s.state === 'finished' ? 'Программа пройдена' : 'Тема не назначена') + '</div>';
-        if (s.state !== 'empty') html += tbar(s.percent, 0, 'Пройдено тем: ' + s.name) + '<div class="muted">Темы: ' + s.done + ' из ' + s.total + '</div>';
+          '<div class="muted">' + (s.current ? 'Topic: ' + esc(s.current.name) : s.state === 'empty' ? 'Programme not loaded' : s.state === 'finished' ? 'Programme completed' : 'No topic assigned') + '</div>';
+        if (s.state !== 'empty') html += tbar(s.percent, 0, 'Topics completed: ' + s.name) + '<div class="muted">Topics: ' + s.done + ' of ' + s.total + '</div>';
         if (s.tasks.mode === 'app') {
-          if (showApp()) html += '<div class="muted" style="margin-top:8px">📱 Задания в приложении</div>';
-          if (sub.total) html += tbar(pct(sub.answered, sub.total), pct(sub.debt, sub.total), 'Задания: решено и долг: ' + s.name) +
-            '<div class="muted">Решено ' + sub.answered + ' из ' + sub.total + ' · верно ' + pct(sub.correct, sub.answered) + '%' +
-            (sub.debt ? ' · <span class="debt">долг ' + sub.debt + '</span>' : '') + '</div>';
+          if (showApp()) html += '<div class="muted" style="margin-top:8px">📱 Tasks in the app</div>';
+          if (sub.total) html += tbar(pct(sub.answered, sub.total), pct(sub.debt, sub.total), 'Tasks: solved and overdue: ' + s.name) +
+            '<div class="muted">Solved ' + sub.answered + ' of ' + sub.total + ' · correct ' + pct(sub.correct, sub.answered) + '%' +
+            (sub.debt ? ' · <span class="debt">overdue ' + sub.debt + '</span>' : '') + '</div>';
         } else if (s.tasks.mode === 'book' && showBook()) {
-          html += '<div class="muted" style="margin-top:8px">📖 Задания в книжке</div>';
+          html += '<div class="muted" style="margin-top:8px">📖 Tasks in the book</div>';
         }
         html += '</section>';
       });
     } else {
-      html += '<div class="card"><p class="muted">Прогресс по темам появится после следующей синхронизации.</p></div>';
+      html += '<div class="card"><p class="muted">Topic progress will appear after the next sync.</p></div>';
     }
 
-    if (state.pack.generatedAt) html += '<p class="muted">Данные от ' + esc(clock(state.pack.generatedAt)) + '. Задания и долг считаются на этом устройстве сразу.</p>';
+    if (state.pack.generatedAt) html += '<p class="muted">Data from ' + esc(clock(state.pack.generatedAt)) + '. Tasks and overdue counts are recalculated on this device right away.</p>';
     view.innerHTML = html;
     var linkBox = view.querySelector('.links');
     Array.prototype.forEach.call(view.querySelectorAll('[data-go]'), function (b) { b.onclick = function () { route(b.getAttribute('data-go')); }; });
@@ -751,38 +750,38 @@
     var firsts = [], states = allStates();
     Object.keys(states).forEach(function (id) { if (states[id].f && langOf[id]) firsts.push({ d: states[id].f, l: langOf[id] }); });
     var vm = L.weeklyVocab({ today: today(), weeks: 12, days: days, firsts: firsts });
-    if (!vm.weeks.length) return '<section class="card" id="vdyn"><h2>📚 Слова</h2><p class="muted">Карточек со словами пока не проходили.</p></section>';
+    if (!vm.weeks.length) return '<section class="card" id="vdyn"><h2>📚 Words</h2><p class="muted">No word cards have been done yet.</p></section>';
 
     var pct = function (x) { return x.r ? Math.round(x.ok * 100 / x.r) : 0; };
     var cell = function (x) { return x.r ? x.r + ' <span class="n">(' + pct(x) + '%)</span>' : '0'; };
     var cur = vm.weeks[vm.weeks.length - 1];
     var line = function (name, x) {
-      return '<strong>' + name + ':</strong> ' + x.r + ' ' + plural(x.r, 'карточка', 'карточки', 'карточек') + (x.r ? ' · верно ' + pct(x) + '%' : '') +
-        ' · ' + x.fresh + ' ' + plural(x.fresh, 'новое слово', 'новых слова', 'новых слов') + ' · непонятных ' + x.lk;
+      return '<strong>' + name + ':</strong> ' + x.r + ' ' + plural(x.r, 'card', 'cards', 'cards') + (x.r ? ' · correct ' + pct(x) + '%' : '') +
+        ' · ' + x.fresh + ' ' + plural(x.fresh, 'new word', 'new words', 'new words') + ' · unclear ' + x.lk;
     };
     var max = vm.weeks.reduce(function (m, w) { return Math.max(m, w.all.r); }, 0) || 1;
     var rows = vm.weeks.slice().reverse().map(function (w) {
       var a = w.start.split('-'), b = L.addDays(w.start, 6).split('-');
       var bar = w.all.r ? '<span style="display:inline-block;height:8px;border-radius:4px;background:var(--accent);vertical-align:middle;margin-left:6px;width:' + Math.round(w.all.r * 60 / max) + 'px"></span>' : '';
-      return '<tr' + (w.current ? ' class="now"' : '') + '><td>' + a[2] + '.' + a[1] + ' – ' + b[2] + '.' + b[1] + (w.current ? ' · эта' : '') + '</td><td>' + cell(w.tr) + '</td><td>' + cell(w.en) +
+      return '<tr' + (w.current ? ' class="now"' : '') + '><td>' + a[2] + '.' + a[1] + ' – ' + b[2] + '.' + b[1] + (w.current ? ' · this week' : '') + '</td><td>' + cell(w.tr) + '</td><td>' + cell(w.en) +
         '</td><td>' + w.all.fresh + '</td><td>' + w.all.lk + '</td><td style="text-align:left">' + bar + '</td></tr>';
     }).join('');
-    return '<section class="card" id="vdyn"><h2>📚 Слова по неделям</h2>' +
-      '<p class="dynsum"><strong>Эта неделя.</strong><br>' + line('Турецкие', cur.tr) + '<br>' + line('Английские', cur.en) + '</p>' +
-      '<div class="tablewrap"><table class="dtable"><thead><tr><th>Неделя</th><th>Турецкие: карточек</th><th>Английские: карточек</th><th>Новых слов</th><th>Непонятных</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<p class="muted">Карточка — один ответ в блоке «Слова». В скобках доля верных. Новое слово — первый ответ на слово. Непонятное — слово, открытое в задании как незнакомое.</p></section>';
+    return '<section class="card" id="vdyn"><h2>📚 Words by week</h2>' +
+      '<p class="dynsum"><strong>This week.</strong><br>' + line('Turkish', cur.tr) + '<br>' + line('English', cur.en) + '</p>' +
+      '<div class="tablewrap"><table class="dtable"><thead><tr><th>Week</th><th>Turkish: cards</th><th>English: cards</th><th>New words</th><th>Unclear</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="muted">A card is one answer in the “Words” block. In brackets: the share correct. A new word is the first answer for a word. Unclear is a word looked up in a task as unfamiliar.</p></section>';
   }
 
   function renderDynamics() {
-    titleEl.textContent = 'Динамика по неделям';
+    titleEl.textContent = 'Trends by week';
     if (!state.pack) {
-      view.innerHTML = '<div class="card"><h2>Данных пока нет</h2><p class="muted">Нажмите «Синхронизировать» при подключении к интернету.</p></div>';
+      view.innerHTML = '<div class="card"><h2>No data yet</h2><p class="muted">Tap “Sync” while online.</p></div>';
       return;
     }
     var d = dynamicsLog();
     var model = P.weeklyDynamics({ today: today(), weeks: 12, log: d.log, subjects: d.subjects });
     if (!model.weeks.length) {
-      view.innerHTML = '<div class="card"><h2>Ответов пока нет</h2><p class="muted">Диаграмма появится после первых ответов.</p></div>' + dynVocabHtml();
+      view.innerHTML = '<div class="card"><h2>No answers yet</h2><p class="muted">The chart will appear after the first answers.</p></div>' + dynVocabHtml();
       return;
     }
     var known = {};
@@ -792,25 +791,25 @@
     var sum = function (s) { return model.weeks.reduce(function (n, w) { return n + (w[met][s.id] || 0); }, 0); };
     var all = model.subjects.reduce(function (n, s) { return n + sum(s); }, 0);
 
-    var html = '<div class="chips" role="group" aria-label="Что показывать">' + Object.keys(P.dynMetrics).map(function (k) {
+    var html = '<div class="chips" role="group" aria-label="What to show">' + Object.keys(P.dynMetrics).map(function (k) {
       return '<button data-met="' + k + '"' + (k === met ? ' aria-pressed="true"' : '') + '>' + esc(P.dynMetrics[k]) + '</button>';
     }).join('') + '</div>';
-    html += '<div class="chips" role="group" aria-label="Предмет"><button data-sub=""' + (!sel ? ' aria-pressed="true"' : '') + '>Все предметы <span class="n">' + all + '</span></button>' +
+    html += '<div class="chips" role="group" aria-label="Subject"><button data-sub=""' + (!sel ? ' aria-pressed="true"' : '') + '>All subjects <span class="n">' + all + '</span></button>' +
       model.subjects.map(function (s) {
         return '<button data-sub="' + esc(s.id) + '"' + (sel === s.id ? ' aria-pressed="true"' : '') + '><i class="dsw dc' + s.color + '"></i> ' + esc(s.name) + ' <span class="n">' + sum(s) + '</span></button>';
       }).join('') + '</div>';
 
     var t = P.dynWeekTotals(model, model.weeks[model.weeks.length - 1], sel);
-    html += '<p class="dynsum"><strong>Эта неделя:</strong> ' + t.all + ' ответов · ' + t.wrong + ' неверных' + (t.all ? ' (' + t.pct + '%)' : '') + ' · ' + t.rep + ' повторов</p>';
-    html += '<section class="card"><h2>' + esc(P.dynMetrics[met]) + ' по неделям</h2>' + P.dynamicsSvg(model, sel, met) +
-      '<p class="muted">Неделя — с понедельника. Считается каждый ответ; повтор — ответ на задание, на которое уже отвечали.</p></section>';
+    html += '<p class="dynsum"><strong>This week:</strong> ' + t.all + ' answers · ' + t.wrong + ' wrong' + (t.all ? ' (' + t.pct + '%)' : '') + ' · ' + t.rep + ' repeats</p>';
+    html += '<section class="card"><h2>' + esc(P.dynMetrics[met]) + ' by week</h2>' + P.dynamicsSvg(model, sel, met) +
+      '<p class="muted">A week starts on Monday. Every answer counts; a repeat is an answer to a task that was answered before.</p></section>';
 
     var rows = model.weeks.slice().reverse().map(function (w) {
       var x = P.dynWeekTotals(model, w, sel), p = w.start.split('-');
-      return '<tr' + (w.current ? ' class="now"' : '') + '><td>' + p[2] + '.' + p[1] + (w.current ? ' · эта' : '') + '</td><td>' + x.all + '</td><td>' + x.wrong +
+      return '<tr' + (w.current ? ' class="now"' : '') + '><td>' + p[2] + '.' + p[1] + (w.current ? ' · this week' : '') + '</td><td>' + x.all + '</td><td>' + x.wrong +
         (x.all ? ' <span class="n">(' + x.pct + '%)</span>' : '') + '</td><td>' + x.rep + '</td></tr>';
     }).join('');
-    html += '<section class="card"><h2>В цифрах</h2><div class="tablewrap"><table class="dtable"><thead><tr><th>Неделя</th><th>Всего</th><th>Неверно</th><th>Повторы</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+    html += '<section class="card"><h2>In numbers</h2><div class="tablewrap"><table class="dtable"><thead><tr><th>Week</th><th>Total</th><th>Wrong</th><th>Repeats</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
     html += dynVocabHtml();
 
     view.innerHTML = html;
@@ -824,17 +823,17 @@
 
   // ------------------------------------------------------------------ задания на сегодня / нужно выполнить
   function renderAssigned(kind) {
-    titleEl.textContent = kind === 'today' ? 'Задания на сегодня' : 'Нужно выполнить';
+    titleEl.textContent = kind === 'today' ? 'Tasks for today' : 'To do';
     if (!state.pack || !state.pack.plan) {
-      view.innerHTML = '<div class="card"><h2>Заданий по расписанию пока нет</h2><p class="muted">Нажмите «Синхронизировать» при подключении к интернету. Задания по темам можно решать на вкладке «Тренировка».</p></div>';
+      view.innerHTML = '<div class="card"><h2>No scheduled tasks yet</h2><p class="muted">Tap “Sync” while online. You can solve tasks by topic on the “Practice” tab.</p></div>';
       return;
     }
     var st = liveStats(), pool = taskPool(), ans = liveAnswered();
     var ids = kind === 'today' ? st.todayList : st.debtList;
 
     if (!ids.length) {
-      view.innerHTML = '<div class="card"><h2>' + (kind === 'today' ? 'На сегодня заданий нет' : 'Долга нет 🎉') + '</h2><p class="muted">' +
-        (kind === 'today' ? 'Задания приходят по расписанию. Можно потренироваться на вкладке «Тренировка».' : 'Все выданные задания выполнены.') + '</p></div>';
+      view.innerHTML = '<div class="card"><h2>' + (kind === 'today' ? 'No tasks for today' : 'Nothing overdue 🎉') + '</h2><p class="muted">' +
+        (kind === 'today' ? 'Tasks arrive on schedule. You can practise on the “Practice” tab.' : 'All assigned tasks are done.') + '</p></div>';
       return;
     }
 
@@ -847,18 +846,18 @@
     });
 
     var summary = kind === 'today'
-      ? '<div class="card"><div class="big"><span class="good">' + st.all.todayDone + '</span> <small>из ' + st.all.today + ' сделано</small></div>' + tbar(pct(st.all.todayDone, st.all.today), 0, 'Сделано сегодня') + '</div>'
-      : '<div class="card"><div class="big debt">' + st.all.debt + ' <small>' + plural(st.all.debt, 'задание', 'задания', 'заданий') + ' ждёт</small></div><p class="muted">Это задания прошлых дней. Они переносятся сюда, пока не будут решены.</p></div>';
+      ? '<div class="card"><div class="big"><span class="good">' + st.all.todayDone + '</span> <small>of ' + st.all.today + ' done</small></div>' + tbar(pct(st.all.todayDone, st.all.today), 0, 'Done today') + '</div>'
+      : '<div class="card"><div class="big debt">' + st.all.debt + ' <small>' + plural(st.all.debt, 'task', 'tasks', 'tasks') + ' waiting</small></div><p class="muted">These are tasks from earlier days. They stay here until they are solved.</p></div>';
 
     view.innerHTML = summary + groups.map(function (g, i) {
       var topic = topicById(g.topicId), done = g.ids.length - g.left.length;
       return '<section class="card"><h2>' + esc(topic ? topic.name : g.topicId) + '</h2>' +
         (topic && topic.subject ? '<div class="muted">' + esc(topic.subject) + '</div>' : '') +
-        (kind === 'today' ? tbar(pct(done, g.ids.length), 0, 'Сделано') + '<div class="muted">Сделано ' + done + ' из ' + g.ids.length + '</div>' : '<div class="muted">Осталось ' + g.left.length + '</div>') +
+        (kind === 'today' ? tbar(pct(done, g.ids.length), 0, 'Done') + '<div class="muted">Done ' + done + ' of ' + g.ids.length + '</div>' : '<div class="muted">' + g.left.length + ' left</div>') +
         '<div class="row">' + (g.left.length
-          ? '<button class="primary" data-g="' + i + '">' + (done ? 'Продолжить' : 'Начать') + ' (' + g.left.length + ')</button>'
-          : '<span class="good">✓ Всё выполнено</span>') + '</div></section>';
-    }).join('') + (groups.length > 1 ? '<div class="row"><button data-g="all">Решать всё подряд (' + ids.filter(function (id) { return ans[id] === undefined; }).length + ')</button></div>' : '');
+          ? '<button class="primary" data-g="' + i + '">' + (done ? 'Continue' : 'Start') + ' (' + g.left.length + ')</button>'
+          : '<span class="good">✓ All done</span>') + '</div></section>';
+    }).join('') + (groups.length > 1 ? '<div class="row"><button data-g="all">Solve everything in a row (' + ids.filter(function (id) { return ans[id] === undefined; }).length + ')</button></div>' : '');
 
     Array.prototype.forEach.call(view.querySelectorAll('[data-g]'), function (b) {
       b.onclick = function () {
@@ -872,23 +871,23 @@
   function dayLabel(date) {
     var p = date.split('-').map(Number), d = new Date(Date.UTC(p[0], p[1] - 1, p[2], 12));
     var t = today().split('-').map(Number), diff = Math.round((d - Date.UTC(t[0], t[1] - 1, t[2], 12)) / 86400000);
-    var name = 'Завтра';
+    var name = 'Tomorrow';
     if (diff !== 1) {
-      try { name = d.toLocaleDateString('ru-RU', { weekday: 'long', timeZone: 'UTC' }); name = name.charAt(0).toUpperCase() + name.slice(1); } catch (e) { name = date; }
+      try { name = d.toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' }); name = name.charAt(0).toUpperCase() + name.slice(1); } catch (e) { name = date; }
     }
     return name + ', ' + ('0' + p[2]).slice(-2) + '.' + ('0' + p[1]).slice(-2);
   }
 
   function renderUpcoming() {
-    titleEl.textContent = 'Ближайшие задания';
+    titleEl.textContent = 'Upcoming tasks';
     if (!state.pack || !state.pack.plan) {
-      view.innerHTML = '<div class="card"><h2>Заданий по расписанию пока нет</h2><p class="muted">Нажмите «Синхронизировать» при подключении к интернету.</p></div>';
+      view.innerHTML = '<div class="card"><h2>No scheduled tasks yet</h2><p class="muted">Tap “Sync” while online.</p></div>';
       return;
     }
     var st = liveStats(), pool = taskPool(), ans = liveAnswered();
     var days = st.upcoming.filter(function (d) { return d.ids.some(function (id) { return pool[id]; }); });
 
-    // «В свободное время»: нерешённые задания, которые никому не выданы
+    // «In your free time»: нерешённые задания, которые никому не выданы
     var planned = {};
     state.pack.plan.forEach(function (r) { planned[r.taskId] = true; });
     var free = [], freeBy = {};
@@ -900,23 +899,23 @@
     });
 
     if (!days.length && !free.length) {
-      view.innerHTML = '<div class="card"><h2>Ближайших заданий нет</h2><p class="muted">Они выдаются по расписанию заранее, когда в занятиях указана тема с заданиями.</p></div>';
+      view.innerHTML = '<div class="card"><h2>No upcoming tasks</h2><p class="muted">They are assigned ahead of time, when a lesson has a topic with tasks.</p></div>';
       return;
     }
 
     var starts = [];
     var freeHtml = free.length
-      ? '<h2 style="margin:16px 0 4px">В свободное время</h2><p class="muted" style="margin:0 0 8px">Эти задания пока никому не выданы — можно решить заранее.</p>' +
+      ? '<h2 style="margin:16px 0 4px">In your free time</h2><p class="muted" style="margin:0 0 8px">These tasks have not been assigned yet — you can solve them ahead of time.</p>' +
         free.map(function (g) {
           var topic = topicById(g.topicId), n = Math.min(10, g.ids.length), idx = starts.push(g.ids.slice(0, n)) - 1;
           return '<section class="card"><h2>' + esc(topic ? topic.name : g.topicId) + '</h2>' +
             (topic && topic.subject ? '<div class="muted">' + esc(topic.subject) + '</div>' : '') +
-            '<div class="muted">Осталось ' + g.ids.length + ' ' + plural(g.ids.length, 'задание', 'задания', 'заданий') + '</div>' +
-            '<div class="row"><button data-u="' + idx + '">Решить ' + n + '</button></div></section>';
+            '<div class="muted">' + g.ids.length + ' ' + plural(g.ids.length, 'task', 'tasks', 'tasks') + ' left</div>' +
+            '<div class="row"><button data-u="' + idx + '">Solve ' + n + '</button></div></section>';
         }).join('')
       : '';
 
-    view.innerHTML = (days.length ? '' : '<p class="muted">Выданных на ближайшие дни заданий пока нет — они появятся после утренней выдачи или следующей синхронизации.</p>') + days.map(function (d) {
+    view.innerHTML = (days.length ? '' : '<p class="muted">No tasks have been assigned for the coming days yet — they will appear after the morning assignment or the next sync.</p>') + days.map(function (d) {
       var byTopic = {}, groups = [];
       d.ids.forEach(function (id) {
         var t = pool[id]; if (!t) return;
@@ -925,13 +924,13 @@
         if (ans[id] === undefined) byTopic[t.topicId].left.push(id);
       });
       var total = groups.reduce(function (n, g) { return n + g.total; }, 0);
-      return '<h2 style="margin:16px 0 8px">' + esc(dayLabel(d.date)) + ' · ' + total + ' ' + plural(total, 'задание', 'задания', 'заданий') + '</h2>' +
+      return '<h2 style="margin:16px 0 8px">' + esc(dayLabel(d.date)) + ' · ' + total + ' ' + plural(total, 'task', 'tasks', 'tasks') + '</h2>' +
         groups.map(function (g) {
           var topic = topicById(g.topicId), idx = starts.push(g.left) - 1;
           return '<section class="card"><h2>' + esc(topic ? topic.name : g.topicId) + '</h2>' +
             (topic && topic.subject ? '<div class="muted">' + esc(topic.subject) + '</div>' : '') +
-            '<div class="muted">' + g.total + ' ' + plural(g.total, 'задание', 'задания', 'заданий') + (g.total - g.left.length ? ' · уже решено ' + (g.total - g.left.length) : '') + '</div>' +
-            (g.left.length ? '<div class="row"><button data-u="' + idx + '">Решить заранее (' + g.left.length + ')</button></div>' : '') + '</section>';
+            '<div class="muted">' + g.total + ' ' + plural(g.total, 'task', 'tasks', 'tasks') + (g.total - g.left.length ? ' · already solved ' + (g.total - g.left.length) : '') + '</div>' +
+            (g.left.length ? '<div class="row"><button data-u="' + idx + '">Solve ahead (' + g.left.length + ')</button></div>' : '') + '</section>';
         }).join('');
     }).join('') + freeHtml;
     Array.prototype.forEach.call(view.querySelectorAll('[data-u]'), function (b) {
@@ -941,10 +940,10 @@
 
   // ------------------------------------------------------------------ расписание
   function renderSchedule() {
-    titleEl.textContent = 'Расписание';
+    titleEl.textContent = 'Schedule';
     var weeks = (state.pack && state.pack.weeks) || [];
     if (!weeks.length) {
-      view.innerHTML = '<div class="card"><h2>Расписания пока нет</h2><p class="muted">Нажмите «Синхронизировать» при подключении к интернету.</p></div>';
+      view.innerHTML = '<div class="card"><h2>No schedule yet</h2><p class="muted">Tap “Sync” while online.</p></div>';
       return;
     }
     var now = today();
@@ -959,22 +958,22 @@
 
     w.days.forEach(function (d) {
       var isToday = d.date === now;
-      html += '<section class="day' + (isToday ? ' today' : '') + '"><h3>' + esc(d.short) + ' ' + esc(d.dayMonth) + (isToday ? ' · сегодня' : '') +
+      html += '<section class="day' + (isToday ? ' today' : '') + '"><h3>' + esc(d.short) + ' ' + esc(d.dayMonth) + (isToday ? ' · today' : '') +
         (d.totalMinutes ? ' <span class="muted">' + esc(duration(d.totalMinutes)) + '</span>' : '') + '</h3>';
-      if (!d.items.length) html += '<p class="muted">Занятий нет</p>';
-      var wd = d.words || { minutes: 10, label: 'Слова', note: 'Карточки в приложении, в любое время дня' };
+      if (!d.items.length) html += '<p class="muted">No lessons</p>';
+      var wd = d.words || { minutes: 10, label: 'Words', note: 'Cards in the app, any time of day' };
       d.items.forEach(function (it) {
-        var loc = it.kind === 'school' ? '🏫 Школа' : it.kind === 'home' ? '🏠 Дома' : it.location;
+        var loc = it.kind === 'school' ? '🏫 School' : it.kind === 'home' ? '🏠 Home' : it.location;
         html += '<div class="item ' + esc(it.kind) + '"><div class="t">' + esc(it.start + (it.end ? '–' + it.end : '')) + ' · ' + esc(it.label) + '</div>' +
           '<div class="m">' + esc([loc, it.duration ? duration(it.duration) : ''].filter(Boolean).join(' · ')) + '</div>' +
           (it.activity ? '<div class="m">' + esc(it.activity) + '</div>' : '') +
           (it.topic ? '<div class="m">📖 ' + esc(it.topic.name) + '</div>' : '') +
-          (it.tasksMode === 'app' ? (showApp() ? '<div class="m">📱 Задания в приложении' + (it.autoTopic ? ' · ' + esc(it.autoTopic) : '') + '</div>' : '') : it.tasksMode === 'book' && showBook() ? '<div class="m">📖 Задания в книжке</div>' : '') +
+          (it.tasksMode === 'app' ? (showApp() ? '<div class="m">📱 Tasks in the app' + (it.autoTopic ? ' · ' + esc(it.autoTopic) : '') + '</div>' : '') : it.tasksMode === 'book' && showBook() ? '<div class="m">📖 Tasks in the book</div>' : '') +
           '</div>';
       });
       html += '<div class="item home wordsblock"><div class="t">📚 ' + esc(wd.label) + ' · ' + esc(duration(wd.minutes)) + '</div>' +
-        '<div class="m">' + esc(wd.note) + (isToday ? ' · сегодня ' + Math.min(state.vdaily.n, WORDS_DAILY) + ' из ' + WORDS_DAILY : '') + '</div>' +
-        (isToday ? '<div class="row"><button data-gowords="1">Открыть слова</button></div>' : '') + '</div>';
+        '<div class="m">' + esc(wd.note) + (isToday ? ' · today ' + Math.min(state.vdaily.n, WORDS_DAILY) + ' of ' + WORDS_DAILY : '') + '</div>' +
+        (isToday ? '<div class="row"><button data-gowords="1">Open words</button></div>' : '') + '</div>';
       html += '</section>';
     });
     view.innerHTML = html;
@@ -985,12 +984,12 @@
 
   function renderPractice() {
     state.session = null;
-    titleEl.textContent = 'Тренировка';
+    titleEl.textContent = 'Practice';
     var topics = state.pack ? state.pack.topics : [];
 
     if (!topics.length) {
-      view.innerHTML = '<div class="card"><h2>Заданий пока нет</h2><p class="muted">' +
-        (navigator.onLine ? 'Нажмите «Синхронизировать» — приложение скачает задания.' : 'Подключитесь к интернету и нажмите «Синхронизировать»: нужно скачать задания.') + '</p></div>';
+      view.innerHTML = '<div class="card"><h2>No tasks yet</h2><p class="muted">' +
+        (navigator.onLine ? 'Tap “Sync” — the app will download the tasks.' : 'Connect to the internet and tap “Sync”: the tasks need to be downloaded.') + '</p></div>';
       return;
     }
 
@@ -999,13 +998,13 @@
       var pct = s.total ? Math.round(s.answered * 100 / s.total) : 0;
       var rest = s.total - s.answered;
       return '<section class="card"><h2>' + esc(t.name) + '</h2>' +
-        (t.subject ? '<div class="muted">' + esc(t.subject) + (t.current ? ' · текущая тема' : '') + '</div>' : (t.current ? '<div class="muted">Текущая тема</div>' : '')) +
-        '<div class="bar-p" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="Решено"><i style="width:' + pct + '%"></i></div>' +
-        '<div class="muted">Решено ' + s.answered + ' из ' + s.total + (s.answered ? ' · верно ' + s.correct : '') + '</div>' +
+        (t.subject ? '<div class="muted">' + esc(t.subject) + (t.current ? ' · current topic' : '') + '</div>' : (t.current ? '<div class="muted">Current topic</div>' : '')) +
+        '<div class="bar-p" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="Solved"><i style="width:' + pct + '%"></i></div>' +
+        '<div class="muted">Solved ' + s.answered + ' of ' + s.total + (s.answered ? ' · correct ' + s.correct : '') + '</div>' +
         '<div class="row">' +
-        (rest ? '<button class="primary" data-start="' + esc(t.id) + '" data-mode="new">' + (s.answered ? 'Продолжить' : 'Начать') + ' (' + rest + ' ' + plural(rest, 'задание', 'задания', 'заданий') + ')</button>' : '') +
-        (s.wrong ? '<button data-start="' + esc(t.id) + '" data-mode="wrong">Повторить ошибки (' + s.wrong + ')</button>' : '') +
-        (!rest ? '<button data-start="' + esc(t.id) + '" data-mode="all">Пройти заново</button>' : '') +
+        (rest ? '<button class="primary" data-start="' + esc(t.id) + '" data-mode="new">' + (s.answered ? 'Continue' : 'Start') + ' (' + rest + ' ' + plural(rest, 'task', 'tasks', 'tasks') + ')</button>' : '') +
+        (s.wrong ? '<button data-start="' + esc(t.id) + '" data-mode="wrong">Repeat mistakes (' + s.wrong + ')</button>' : '') +
+        (!rest ? '<button data-start="' + esc(t.id) + '" data-mode="all">Start over</button>' : '') +
         '</div></section>';
     }).join('');
 
@@ -1028,7 +1027,7 @@
     taskIds.forEach(function (id) { if (pool[id] && ans[id] === undefined) tasks.push(pool[id]); });
     if (!tasks.length) return route(back);
     state.session = { topicId: tasks[0].topicId, tasks: tasks, index: 0, correct: 0, answered: false, back: back,
-      title: back === 'debt' ? 'Нужно выполнить' : back === 'upcoming' ? 'Ближайшие задания' : 'Задания на сегодня' };
+      title: back === 'debt' ? 'To do' : back === 'upcoming' ? 'Upcoming tasks' : 'Tasks for today' };
     renderTask();
   }
 
@@ -1038,24 +1037,24 @@
     var topic = topicById(task.topicId || s.topicId);
     s.answered = false;
     document.getElementById('nav').style.display = 'none';
-    titleEl.textContent = s.title || (topic ? topic.name : 'Задания');
+    titleEl.textContent = s.title || (topic ? topic.name : 'Tasks');
 
-    var head = '<div class="muted">Задание ' + (s.index + 1) + ' из ' + s.tasks.length + '</div>' +
+    var head = '<div class="muted">Task ' + (s.index + 1) + ' of ' + s.tasks.length + '</div>' +
       '<div class="bar-p"><i style="width:' + Math.round(s.index * 100 / s.tasks.length) + '%"></i></div>' +
       '<div class="q">' + rich(task.q) + '</div>' + figure(task) + taskWordsHtml(task);
 
     if (task.type === 'choice') {
       view.innerHTML = '<div class="card">' + head + '<div class="opts" id="opts">' +
         task.options.map(function (o, i) { return '<button data-i="' + i + '">' + rich(o) + '</button>'; }).join('') +
-        '</div><div id="fb"></div></div><div class="row"><button id="quit">Назад</button></div>';
+        '</div><div id="fb"></div></div><div class="row"><button id="quit">Back</button></div>';
       Array.prototype.forEach.call(view.querySelectorAll('#opts button'), function (b) {
         b.onclick = function () { answer(task, task.options[Number(b.getAttribute('data-i'))], b); };
       });
     } else {
       view.innerHTML = '<div class="card">' + head +
-        '<input type="text" id="ans" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Ответ">' +
-        '<div class="row"><button class="primary" id="check">Проверить</button></div><div id="fb"></div></div>' +
-        '<div class="row"><button id="quit">Назад</button></div>';
+        '<input type="text" id="ans" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Answer">' +
+        '<div class="row"><button class="primary" id="check">Check</button></div><div id="fb"></div></div>' +
+        '<div class="row"><button id="quit">Back</button></div>';
       var input = document.getElementById('ans');
       var go = function () { if (input.value.trim()) answer(task, input.value, null); };
       document.getElementById('check').onclick = go;
@@ -1097,11 +1096,11 @@
     }
 
     var fb = document.getElementById('fb');
-    fb.innerHTML = '<div class="fb ' + (ok ? 'ok' : 'bad') + '" role="status"><b>' + (ok ? 'Верно!' : 'Не совсем.') + '</b>' +
-      (ok ? '' : '<div>Правильный ответ: <strong>' + rich(task.answer[0]) + '</strong></div>') +
+    fb.innerHTML = '<div class="fb ' + (ok ? 'ok' : 'bad') + '" role="status"><b>' + (ok ? 'Correct!' : 'Not quite.') + '</b>' +
+      (ok ? '' : '<div>Correct answer: <strong>' + rich(task.answer[0]) + '</strong></div>') +
       (task.explanation ? '<div class="muted" style="margin-top:6px">' + rich(task.explanation) + '</div>' : '') + '</div>' +
-      '<div class="row"><button id="flag" aria-pressed="false">🔁 Сложное — на повтор</button>' +
-      '<button class="primary" id="next">' + (s.index + 1 >= s.tasks.length ? 'Закончить' : 'Дальше') + '</button></div>';
+      '<div class="row"><button id="flag" aria-pressed="false">🔁 Hard — repeat later</button>' +
+      '<button class="primary" id="next">' + (s.index + 1 >= s.tasks.length ? 'Finish' : 'Next') + '</button></div>';
     document.getElementById('flag').onclick = function () { flagForRetry(task, ok, given, this); };
     var next = document.getElementById('next');
     next.onclick = function () { s.index++; renderTask(); };
@@ -1116,7 +1115,7 @@
     if (!s || button.getAttribute('aria-pressed') === 'true') return;
     button.setAttribute('aria-pressed', 'true');
     button.disabled = true;
-    button.textContent = '✓ Отмечено на повтор';
+    button.textContent = '✓ Marked for repeat';
     var at = new Date().toISOString();
     var attempt = { attempt_id: L.makeAttemptId(), task_id: task.id, topic_id: task.topicId || s.topicId, answer: RETRY_MARK + ' ' + String(given), answered_at: at };
     var rec = { task_id: task.id, correct: wasCorrect, at: at, retry: true };
@@ -1129,10 +1128,10 @@
 
   function renderFinish() {
     var s = state.session;
-    titleEl.textContent = 'Готово';
-    view.innerHTML = '<div class="card"><h2>Молодец!</h2><p>Верно ' + s.correct + ' из ' + s.tasks.length + '.</p>' +
-      (state.queued ? '<p class="muted">Ответы сохранены на устройстве и отправятся, когда появится интернет.</p>' : '') +
-      '<div class="row"><button class="primary" id="home">Готово</button></div></div>';
+    titleEl.textContent = 'Done';
+    view.innerHTML = '<div class="card"><h2>Well done!</h2><p>Correct: ' + s.correct + ' of ' + s.tasks.length + '.</p>' +
+      (state.queued ? '<p class="muted">Answers are saved on this device and will be sent when you are online.</p>' : '') +
+      '<div class="row"><button class="primary" id="home">Done</button></div></div>';
     var back = s.back || 'practice';
     state.session = null;
     document.getElementById('home').onclick = function () { route(back); };
@@ -1179,7 +1178,7 @@
       if (fromUrl && saved) history.replaceState(null, '', location.pathname);   // убираем код из адресной строки
       return kvGet('config');
     }).then(function (cfg) {
-      if (!cfg) { renderStatus(); return renderSetup(fromUrl ? 'Код не подошёл. Скопируйте его целиком.' : ''); }
+      if (!cfg) { renderStatus(); return renderSetup(fromUrl ? 'The code did not work. Copy it in full.' : ''); }
       state.config = cfg;
       return currentSetupCode().then(function (code) { if (code) applyManifest(code); start(); });
     });
