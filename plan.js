@@ -97,7 +97,7 @@
     var rows = [];
     (input.log || []).forEach(function (l, k) {
       if (!l || !l.t || !l.s || !l.d) return;
-      rows.push({ t: l.t, s: l.s, d: l.d, at: l.at || (l.d + 'T00:00:00.000Z'), ok: l.ok, k: k });
+      rows.push({ t: l.t, s: l.s, d: l.d, at: l.at || (l.d + 'T00:00:00.000Z'), ok: l.ok, sec: Number(l.sec) > 0 ? Number(l.sec) : 0, k: k });
     });
     rows.sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : a.k - b.k; });
 
@@ -114,7 +114,7 @@
     var weeks = [], index = {};
     for (var w = from; w <= thisWeek; w = dynAddDays(w, 7)) {
       index[w] = weeks.length;
-      weeks.push({ start: w, all: {}, wrong: {}, rep: {}, total: 0, totalWrong: 0, totalRep: 0, current: w === thisWeek });
+      weeks.push({ start: w, all: {}, wrong: {}, rep: {}, time: {}, total: 0, totalWrong: 0, totalRep: 0, totalTime: 0, current: w === thisWeek });
     }
 
     var order = [], names = {}, used = {}, seen = {};
@@ -128,8 +128,13 @@
       x.all[r.s] = (x.all[r.s] || 0) + 1; x.total++;
       if (r.ok === false) { x.wrong[r.s] = (x.wrong[r.s] || 0) + 1; x.totalWrong++; }
       if (repeat) { x.rep[r.s] = (x.rep[r.s] || 0) + 1; x.totalRep++; }
+      if (r.sec) x.time[r.s] = (x.time[r.s] || 0) + r.sec;   // секунды; ниже переводятся в минуты
       used[r.s] = true;
       if (order.indexOf(r.s) < 0) order.push(r.s);
+    });
+
+    weeks.forEach(function (x) {
+      Object.keys(x.time).forEach(function (sid) { x.time[sid] = Math.round(x.time[sid] / 60); x.totalTime += x.time[sid]; });
     });
 
     var subjects = [];
@@ -137,7 +142,7 @@
     return { weeks: weeks, subjects: subjects };
   }
 
-  var DYN_METRICS = { all: 'Total answers', wrong: 'Wrong', rep: 'Repeats' };
+  var DYN_METRICS = { all: 'Total answers', wrong: 'Wrong', rep: 'Repeats', time: 'Time spent (min)' };
 
   /** Столбчатая диаграмма со стеком: по X недели, по Y ответы. metric: all | wrong | rep; selected — id одного предмета или ''. */
   function dynamicsSvg(model, selected, metric) {
@@ -145,7 +150,7 @@
     var shown = model.subjects.filter(function (s) { return !selected || s.id === selected; });
     var W = 640, H = 300, L = 40, R = 10, T = 22, B = 34, pw = W - L - R, ph = H - T - B;
     var totals = model.weeks.map(function (w) {
-      return shown.reduce(function (n, s) { return n + (w[metric][s.id] || 0); }, 0);
+      return shown.reduce(function (n, s) { return n + ((w[metric] || {})[s.id] || 0); }, 0);
     });
     var max = Math.max.apply(null, totals.concat([0]));
     var step = dynNiceStep(max), top = Math.max(step * Math.ceil(max / step), step);
@@ -156,13 +161,13 @@
       out += '<line class="dgrid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/>' +
         '<text class="dax" x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + v + '</text>';
     }
-    if (max === 0) out += '<text class="dax" x="' + (W / 2) + '" y="' + (T + ph / 2) + '" text-anchor="middle">No such answers</text>';
+    if (max === 0) out += '<text class="dax" x="' + (W / 2) + '" y="' + (T + ph / 2) + '" text-anchor="middle">' + (metric === 'time' ? 'No time recorded yet' : 'No such answers') + '</text>';
 
     var slot = pw / Math.max(model.weeks.length, 1), bw = Math.min(52, slot * 0.66);
     model.weeks.forEach(function (w, k) {
       var x = L + slot * k + (slot - bw) / 2, acc = 0;
       shown.forEach(function (s) {
-        var c = w[metric][s.id] || 0;
+        var c = (w[metric] || {})[s.id] || 0;
         if (!c) return;
         var h = c * ph / top;
         out += '<rect class="dc' + s.color + '" x="' + x.toFixed(1) + '" y="' + y(acc + c).toFixed(1) + '" width="' + bw.toFixed(1) +
@@ -178,10 +183,10 @@
 
   /** Итоги недели по выбранным предметам: { all, wrong, rep, pct (доля неверных, %) }. */
   function dynWeekTotals(model, week, selected) {
-    var r = { all: 0, wrong: 0, rep: 0, pct: 0 };
+    var r = { all: 0, wrong: 0, rep: 0, time: 0, pct: 0 };
     model.subjects.forEach(function (s) {
       if (selected && s.id !== selected) return;
-      r.all += week.all[s.id] || 0; r.wrong += week.wrong[s.id] || 0; r.rep += week.rep[s.id] || 0;
+      r.all += week.all[s.id] || 0; r.wrong += week.wrong[s.id] || 0; r.rep += week.rep[s.id] || 0; r.time += (week.time || {})[s.id] || 0;
     });
     r.pct = r.all ? Math.round(r.wrong * 100 / r.all) : 0;
     return r;

@@ -152,7 +152,7 @@
   function renderStatus() {
     var online = navigator.onLine;
     var html = '<span class="pill ' + (online ? 'ok' : 'warn') + '">' + (online ? 'Online' : 'Offline') + '</span>';
-    html += '<span class="pill">v20</span>';
+    html += '<span class="pill">v21</span>';
     html += '<span class="pill ' + (state.queued + state.vq.length + state.vnew.length ? 'warn' : '') + '">Not sent: ' + (state.queued + state.vq.length + state.vnew.length) + '</span>';
     if (state.syncError) html += '<span class="pill warn" role="alert">' + esc(state.syncError) + '</span>';
     else if (state.lastSync) html += '<span class="pill">Synced at ' + esc(clock(state.lastSync)) + '</span>';
@@ -727,7 +727,10 @@
       if (!task || String(a.answer).indexOf(RETRY_MARK) === 0) return;
       var sid = topicSubject[task.topicId || a.topic_id], when = new Date(a.answered_at);
       if (!sid || isNaN(when.getTime())) return;
-      log.push({ t: a.task_id, s: sid, d: P.todayInIstanbul(when), at: when.toISOString(), ok: L.isCorrect(task.answer, a.answer) });
+      var entry = { t: a.task_id, s: sid, d: P.todayInIstanbul(when), at: when.toISOString(), ok: L.isCorrect(task.answer, a.answer) };
+      var sec = a.started_at ? (when.getTime() - new Date(a.started_at).getTime()) / 1000 : 0;
+      if (sec > 0 && sec <= 6 * 3600) entry.sec = Math.min(Math.round(sec), 600);
+      log.push(entry);
     });
     return { log: log, subjects: dyn.subjects || [] };
   }
@@ -772,6 +775,8 @@
       '<p class="muted">A card is one answer in the “Words” block. In brackets: the share correct. A new word is the first answer for a word. Unclear is a word looked up in a task as unfamiliar.</p></section>';
   }
 
+  function fmtMin(m) { m = Math.round(Number(m) || 0); return m >= 60 ? Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '') : m + ' min'; }
+
   function renderDynamics() {
     titleEl.textContent = 'Trends by week';
     if (!state.pack) {
@@ -800,7 +805,7 @@
       }).join('') + '</div>';
 
     var t = P.dynWeekTotals(model, model.weeks[model.weeks.length - 1], sel);
-    html += '<p class="dynsum"><strong>This week:</strong> ' + t.all + ' answers · ' + t.wrong + ' wrong' + (t.all ? ' (' + t.pct + '%)' : '') + ' · ' + t.rep + ' repeats</p>';
+    html += '<p class="dynsum"><strong>This week:</strong> ' + t.all + ' answers · ' + t.wrong + ' wrong' + (t.all ? ' (' + t.pct + '%)' : '') + ' · ' + t.rep + ' repeats' + (t.time ? ' · ' + fmtMin(t.time) : '') + '</p>';
     html += '<section class="card"><h2>' + esc(P.dynMetrics[met]) + ' by week</h2>' + P.dynamicsSvg(model, sel, met) +
       '<p class="muted">A week starts on Monday. Every answer counts; a repeat is an answer to a task that was answered before.</p></section>';
 
@@ -809,7 +814,7 @@
       return '<tr' + (w.current ? ' class="now"' : '') + '><td>' + p[2] + '.' + p[1] + (w.current ? ' · this week' : '') + '</td><td>' + x.all + '</td><td>' + x.wrong +
         (x.all ? ' <span class="n">(' + x.pct + '%)</span>' : '') + '</td><td>' + x.rep + '</td></tr>';
     }).join('');
-    html += '<section class="card"><h2>In numbers</h2><div class="tablewrap"><table class="dtable"><thead><tr><th>Week</th><th>Total</th><th>Wrong</th><th>Repeats</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+    html += '<section class="card"><h2>In numbers</h2><div class="tablewrap"><table class="dtable"><thead><tr><th>Week</th><th>Total</th><th>Wrong</th><th>Repeats</th><th>Time</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
     html += dynVocabHtml();
 
     view.innerHTML = html;
@@ -1036,6 +1041,7 @@
     if (!task || s.index >= s.tasks.length) return renderFinish();
     var topic = topicById(task.topicId || s.topicId);
     s.answered = false;
+    if (s.shownIndex !== s.index) { s.shownIndex = s.index; s.shownAt = new Date().toISOString(); }   // время открытия задания (часы устройства, работает офлайн)
     document.getElementById('nav').style.display = 'none';
     titleEl.textContent = s.title || (topic ? topic.name : 'Tasks');
 
@@ -1074,6 +1080,7 @@
     if (ok) s.correct++;
 
     var attempt = { attempt_id: L.makeAttemptId(), task_id: task.id, topic_id: task.topicId || s.topicId, answer: String(given), answered_at: new Date().toISOString() };
+    if (s.shownAt && s.shownIndex === s.index) attempt.started_at = s.shownAt;
     var rec = { task_id: task.id, correct: ok, at: attempt.answered_at };
 
     // Сначала сохраняем на устройстве; показываем результат — и только потом пробуем отправить.
@@ -1118,6 +1125,7 @@
     button.textContent = '✓ Marked for repeat';
     var at = new Date().toISOString();
     var attempt = { attempt_id: L.makeAttemptId(), task_id: task.id, topic_id: task.topicId || s.topicId, answer: RETRY_MARK + ' ' + String(given), answered_at: at };
+    if (s.shownAt && s.shownIndex === s.index) attempt.started_at = s.shownAt;
     var rec = { task_id: task.id, correct: wasCorrect, at: at, retry: true };
     Promise.all([queuePut(attempt), donePut(rec)]).then(refreshCounters).then(function () {
       state.done[task.id] = rec;
