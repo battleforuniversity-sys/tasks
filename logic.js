@@ -160,7 +160,30 @@
     });
     var freshN = Math.max(0, Math.min(newLimit - startedToday, fresh.length, total));
     var dueN = Math.min(due.length, total - freshN);
-    return { due: due.slice(0, dueN), fresh: fresh.slice(0, freshN), dueTotal: due.length, freshTotal: fresh.length };
+    return { due: due.slice(0, dueN), fresh: balanceFresh(fresh, words, states, freshN, newLimit), dueTotal: due.length, freshTotal: fresh.length };
+  }
+
+  /**
+   * Новые слова пополам между турецким и английским: очередь каждого языка остаётся в прежнем порядке (свои, потом «открывал», потом остальные),
+   * а брать из очередей начинаем с языка, по которому начато меньше слов за всё время. За один раз — не больше ceil(60%) от дневного лимита
+   * одного языка, чтобы дефицит выравнивался плавно (например, 3 + 2), а не целиком в один день.
+   */
+  function balanceFresh(fresh, words, states, n, newLimit) {
+    var q = { tr: [], en: [] }, started = { tr: 0, en: 0 };
+    fresh.forEach(function (w) { (q[w.l === 'tr' ? 'tr' : 'en']).push(w); });
+    words.forEach(function (w) { var st = states[w.id]; if (st && st.n > 0) started[w.l === 'tr' ? 'tr' : 'en']++; });
+    var cap = Math.ceil((newLimit || n) * 0.6), taken = { tr: 0, en: 0 }, out = [];
+    while (out.length < n) {
+      var pick = null;
+      ['tr', 'en'].forEach(function (l) {
+        if (!q[l].length || taken[l] >= cap) return;
+        if (pick === null || started[l] + taken[l] < started[pick] + taken[pick]) pick = l;
+      });
+      if (pick === null) pick = q.tr.length ? 'tr' : (q.en.length ? 'en' : null);   // лимит языка исчерпан, а другого нет — добираем
+      if (pick === null) break;
+      out.push(q[pick].shift()); taken[pick]++;
+    }
+    return out;
   }
 
   function shuffle(arr, rnd) {
